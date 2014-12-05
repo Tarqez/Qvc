@@ -23,7 +23,7 @@ class Art(Base):
     ga_code = Column(Unicode, unique=True, index=True, nullable=False)
     itemid = Column(Unicode, default=u'') 
 
-    qty = Column(PickleType, default=None) # to hold PyDict of qties
+    qty = Column(PickleType, default=None) # to hold PyDict of quantities
     extra_qty = Column(Integer, default=0)
     # case extra_qty of
     # >= 0: ebay_qty = qty+extra_qty
@@ -98,7 +98,7 @@ def ebay_qty(qties, extra_q = 0):
     if extra_q >= 0:
         for m in qties:
             if m in excluded_stores: continue
-            q += qties[m]-1
+            q += qties[m]-1 if qties[m]>=1 else 0
         q += extra_q
     return q
 
@@ -119,15 +119,15 @@ def fx_fname(action_name, session):
 # --------------
 
 def qty_alignment(session):
-    '''Read Fx report "attivo" and on DB
-    - overwrite itemid with a value or blank 
-    - set changed to True or False
+    '''Read Fx report "attivo" and perform on DB
+        - overwriting itemid with a value or blank 
+        - setting changed to True or False
     finally 
-    - check if there are ads out of DB
-    - check if there are ads with OutOfStockControl=false'''
+        - check if there are ads out of DB
+        - check if there are ads with OutOfStockControl=false'''
 
     folder = os.path.join(DATA_PATH, 'attivo_report')
-    fname = fname_in(folder)
+    fname = get_fname_in(folder)
 
     # Reset all itemid and changed fields
     all_arts = session.query(Art)
@@ -167,7 +167,8 @@ def qty_alignment(session):
 
 
 def qty_datasource(fxls):
-    'Return a dict of dict of store-qty'
+    '''Return a dict of dict of store-qty
+    func fitting the nature of file.xls downloaded from intranet'''
 
     qty = dict() # dict of dicts
 
@@ -247,12 +248,12 @@ def qty_loader(session):
 
     # init with all DB ids
     zero_qty_row_ids = [id_tuple[0] for id_tuple in session.query(Art.id).all()]
-    # Missing zero qty rows hack
-    #  step by step remove all qty>0 rows id
+    # Missing zero-qty-rows hack
+    #  step by step remove all row-id with qty>0
     #  in the end will remain all zero row ids
 
     fname = get_fname_in(folder)
-    qty_rows = qty_datasource(fname)
+    qty_rows = qty_datasource(fname) # get dict of dict from file.xls
     for ga_code in qty_rows:
         try:
             art = session.query(Art).filter(Art.ga_code == ga_code).first()                    
@@ -263,7 +264,7 @@ def qty_loader(session):
                     if (art.itemid != u''): # if it is online
                         art.changed=True # set a qty change
                     session.add(art)
-                zero_qty_row_ids.remove(art.id) # zero qty hack: qty>0, remove
+                zero_qty_row_ids.remove(art.id) # zero-qty hack: qty>0, remove
 
             else: # not exsist, create
                 art = Art()

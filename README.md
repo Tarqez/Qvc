@@ -21,4 +21,4 @@ Linee Guida
 
 	ebay_qty = f(qty, extra_qty)
 
-	f = SUM q-1 ) + extra_qty | 0 if extra_qty <0
+	f = SUM(q-1) + extra_qty | 0 if extra_qty <0
