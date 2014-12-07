@@ -3,7 +3,6 @@ import sys, csv, os, xlrd, zipfile, datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import load_only
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, Unicode, Boolean, DateTime, PickleType
 
@@ -93,7 +92,8 @@ def ebay_qty(qties, extra_q = 0):
                        'm94':'closing',
                        'm95':'closing',
                        'm97':'closing',
-                       'm9a':'small and highly unreliable'}
+                       'm9a':'small and highly unreliable',
+                       'mgt':'small and particular'}
     q = 0
     if extra_q >= 0:
         for m in qties:
@@ -260,7 +260,7 @@ def qty_loader(session):
             if art: # exsist, update
                 if art.qty != qty_rows[ga_code]: # if qty is to update
                     art.qty = qty_rows[ga_code]
-                    art.timestamp = datetime.datetime.utcnow() # touched the row
+                    art.timestamp = datetime.datetime.utcnow() # touch the row
                     if (art.itemid != u''): # if it is online
                         art.changed=True # set a qty change
                     session.add(art)
@@ -286,7 +286,7 @@ def qty_loader(session):
         art_zero_qty = session.query(Art).filter(Art.id == id).first() # surely exsist in DB
         if art_zero_qty.qty != {}: # if it is already 0 do nothing, exit
             art_zero_qty.qty = {} # set to 0
-            art_zero_qty.timestamp = datetime.datetime.utcnow() # touched the row
+            art_zero_qty.timestamp = datetime.datetime.utcnow() # touch the row
             if (art_zero_qty.itemid != u''): # if online               
                 art_zero_qty.changed=True # set a qty change                                
             session.add(art)
