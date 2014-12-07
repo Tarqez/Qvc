@@ -4,7 +4,7 @@ import sys, csv, os, xlrd, zipfile, datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, Unicode, Boolean, DateTime, PickleType
+from sqlalchemy import Column, Integer, Float, Unicode, Boolean, DateTime, PickleType
 
 
 # DB def with Sqlalchemy
@@ -22,14 +22,18 @@ class Art(Base):
     ga_code = Column(Unicode, unique=True, index=True, nullable=False)
     itemid = Column(Unicode, default=u'') 
 
-    qty = Column(PickleType, default=None) # to hold PyDict of quantities
+    qty = Column(PickleType, default=None) # hold PyDict of quantities
     extra_qty = Column(Integer, default=0)
     # case extra_qty of
     # >= 0: ebay_qty = qty+extra_qty
     # <0:   ebay_qty = 0
 
+    prc = Column(PickleType, default=None) # hold PyDict of prices
+    extra_prc = Column(Float, default=0.0)
+
     notes = Column(Unicode, default=u'')
-    changed = Column(Boolean, default=False)
+    qty_changed = Column(Boolean, default=False)
+    prc_changed = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow) # don't know how behave    
 
 class Sequence(Base):
@@ -69,6 +73,17 @@ ACTION = '*Action(SiteID=Italy|Country=IT|Currency=EUR|Version=745|CC=UTF-8)' # 
 # Fruitful functions
 # ------------------
 
+def price(p, m='1'):
+    '''Return float price from string.
+        Strip and convert italian format and consider the moltiplicatore m.
+        Empty values default to 0 (for price) an 1 (for moltiplicatore).'''
+    p = p.strip()
+    p = 0.0 if p=='' else float(p.replace('.','').replace(',','.'))
+    m = m.strip()
+    m = 1.0 if m=='' else float(m)
+    return p/m
+
+
 def get_fname_in(folder):
     'Return the filename inside folder'
 
@@ -103,6 +118,21 @@ def ebay_qty(qties, extra_q = 0):
     return q
 
 
+
+def ebay_price(prcs, extra_p = 0):
+    'Compute ebay price'
+
+    p = extra_p
+    if extra_p == 0:
+        # B line price (all prices >= 0)
+        if prcs[b] == 0: prcs[b] = max(prcs[c], prcs[d], prcs[dr])
+        if prcs[b] < 30: p = prcs[b]
+        elif prcs[b] < 50: p = b + 2.44
+        else: p = prcs[b]
+    return p         
+
+
+
 def fx_fname(action_name, session):
     'Build & return Fx filename with a sequence number suffix'
 
@@ -121,7 +151,7 @@ def fx_fname(action_name, session):
 def qty_alignment(session):
     '''Read Fx report "attivo" and perform on DB
         - overwriting itemid with a value or blank 
-        - setting changed to True or False
+        - setting qty_changed to True or False
     finally 
         - check if there are ads out of DB
         - check if there are ads with OutOfStockControl=false'''
@@ -129,11 +159,11 @@ def qty_alignment(session):
     folder = os.path.join(DATA_PATH, 'attivo_report')
     fname = get_fname_in(folder)
 
-    # Reset all itemid and changed fields
+    # Reset all itemid and qty_changed fields
     all_arts = session.query(Art)
     for art in all_arts:
         art.itemid = u''
-        art.changed = False
+        art.qty_changed = False
         session.add(art)
 
     with open(fname, 'rb') as f:
@@ -147,7 +177,7 @@ def qty_alignment(session):
                 art = session.query(Art).filter(Art.ga_code == ga_code_from_ebay).first()
                 if art:
                     if ebay_qty(art.qty, art.extra_qty) != qty_from_ebay:
-                        art.changed =True # set changed if different
+                        art.qty_changed =True # set qty_changed if different
                     art.itemid = itemid_from_ebay
                     session.add(art)
                 else: # alert for items out of DB
@@ -167,7 +197,7 @@ def qty_alignment(session):
 
 
 def qty_datasource(fxls):
-    '''Return a dict of dict of store-qty
+    '''Return a dict ga_code --> dict(store-qty)
     func fitting the nature of file.xls downloaded from intranet'''
 
     qty = dict() # dict of dicts
@@ -224,10 +254,39 @@ def qty_datasource(fxls):
 
     return qty
 
+def prc_datasource(fcsv):
+    '''Return a dict ga_code --> dict(listino-price)'''
+
+    prc = dict() # dict of dicts
+
+    # Load csv file in a dict of dict
+    with open(fcsv, 'rb') as f:
+        dsource_rows = csv.reader(f, delimiter=';', quotechar='"')
+        dsource_rows.next()
+        for row in dsource_rows:
+            try:
+                prc[row[0]] = dict() # ga_code
+                prc[row[0]]['b'] = price(row[1][14:], row[1][:6])
+                prc[row[0]]['c'] = price(row[2][14:], row[2][:6])
+                prc[row[0]]['d'] = price(row[3][14:], row[3][:6])
+                prc[row[0]]['dr'] = price(row[4][14:], row[4][:6])
+
+            except ValueError:
+                print 'rejected line:'
+                print row
+                print sys.exc_info()[0]
+                print sys.exc_info()[1]
+                print sys.exc_info()[2]    
+    return prc  
+
+
+
+
 def db_cleaner(session):
     'Remove from db 3+ months old row with zero qty'
     session.query(Art).filter(datetime.datetime.utcnow() - art.timestamp >= datetime.timedelta(90),
                                 ebay_qty(qty, extra_qty) == 0).delete()
+    session.commit()
 
 
 
@@ -257,16 +316,16 @@ def qty_loader(session):
     for ga_code in qty_rows:
         try:
             art = session.query(Art).filter(Art.ga_code == ga_code).first()                    
-            if art: # exsist, update
+            if art: # exsists, possible update
                 if art.qty != qty_rows[ga_code]: # if qty is to update
                     art.qty = qty_rows[ga_code]
                     art.timestamp = datetime.datetime.utcnow() # touch the row
                     if (art.itemid != u''): # if it is online
-                        art.changed=True # set a qty change
+                        art.qty_changed=True # set qty_changed
                     session.add(art)
                 zero_qty_row_ids.remove(art.id) # zero-qty hack: qty>0, remove
 
-            else: # not exsist, create
+            else: # not exsists, create
                 art = Art()
                 art.ga_code = ga_code
                 art.qty = qty_rows[ga_code]
@@ -288,8 +347,41 @@ def qty_loader(session):
             art_zero_qty.qty = {} # set to 0
             art_zero_qty.timestamp = datetime.datetime.utcnow() # touch the row
             if (art_zero_qty.itemid != u''): # if online               
-                art_zero_qty.changed=True # set a qty change                                
+                art_zero_qty.qty_changed=True # set qty_changed                                
             session.add(art)
+    session.commit()
+
+
+def price_loader(session):
+    "Load ('ga_code', 'prc') into DB"
+    
+    folder = os.path.join(DATA_PATH, 'prices')
+
+    fname = get_fname_in(folder)
+    #prc_rows = prc_datasource(fname) # get dict of dict from file.csv
+    prc_rows = prc_ds_migration(fname)
+    for ga_code in prc_rows:
+        try:
+            art = session.query(Art).filter(Art.ga_code == ga_code).first()
+            if art: # exsits, possible update
+                if art.prc != prc_rows[ga_code]: # if prc is to update
+                    art.prc = prc_rows[ga_code]
+                    if (art.itemid != u''): # if it is online
+                        art.prc_changed=True # set  prc_changed
+                    session.add(art)
+            
+            else: # not exsists, create
+                art = Art()
+                art.ga_code = ga_code
+                art.prc = prc_rows[ga_code]
+                session.add(art)
+        except ValueError:
+            print 'rejected line:'
+            print ga_code
+            print sys.exc_info()[0]
+            print sys.exc_info()[1]
+            print sys.exc_info()[2]
+    os.remove(fname)
     session.commit()
             
 
@@ -300,15 +392,31 @@ def qty_loader(session):
 def revise_qty(session):
     'Fx revise quantity action'
     smartheaders = (ACTION, 'ItemID', '*Quantity')
-    arts = session.query(Art).filter(Art.itemid != u'', Art.changed)
+    arts = session.query(Art).filter(Art.itemid != u'', Art.qty_changed)
     fout_name = os.path.join(DATA_PATH, fx_fname('revise_qty', session))
     with EbayFx(fout_name, smartheaders) as wrt:
         for art in arts:
-            fx_revise_row = {ACTION:'Revise',
-                             'ItemID':art.itemid,
-                             '*Quantity':ebay_qty(art.qty, art.extra_qty),}
+            fx_revise_row = {ACTION: 'Revise',
+                             'ItemID': art.itemid,
+                             '*Quantity': ebay_qty(art.qty, art.extra_qty),}
             wrt.writerow(fx_revise_row)
-            art.changed = False
+            art.qty_changed = False
+            session.add(art)
+        session.commit()
+
+
+def revise_price(session):
+    'Fx revise price'
+    smartheaders=(ACTION, 'ItemID', '*StartPrice')
+    arts = session.query(Art).filter(Art.ebay_itemid != u'', Art.prc_changed)
+    fout_name = os.path.join(DATA_PATH, fx_fname('revise_price', session))
+    with EbayFx(fout_name, smartheaders) as wrt:
+        for art in arts:
+            fx_revise_row = {ACTION: 'Revise',
+                             'ItemID': art.itemid,
+                             '*StartPrice': ebay_price(art.prc, art.extra_prc),}
+            wrt.writerow(fx_revise_row)
+            art.prc_changed = False
             session.add(art)
         session.commit()
 
@@ -338,3 +446,36 @@ def dontsell(ga_code, notes=u''):
     s.add(item)
     s.commit()
     s.close()
+
+
+# Migration aid
+
+def prc_ds_migration(fcsv):
+    'to import prices exported from old db'  
+
+    prc = dict() # dict of dicts
+
+    # Load csv file in a dict of dict
+    with open(fcsv, 'rb') as f:
+        dsource_rows = csv.reader(f, delimiter=',', quotechar='"')
+        for row in dsource_rows:
+            try:
+                prc[row[0]] = dict() # ga_code
+                prc[row[0]]['b'] = row[1]
+                prc[row[0]]['c'] = row[2]
+                prc[row[0]]['d'] = row[3]
+                prc[row[0]]['dr'] = row[4]
+
+            except ValueError:
+                print 'rejected line:'
+                print row
+                print sys.exc_info()[0]
+                print sys.exc_info()[1]
+                print sys.exc_info()[2]    
+    return prc  
+
+
+def db_clean(session):
+    'Delete exceding rows from old db'
+    session.query(Art).filter(Art.qty == None).delete()
+    session.commit()
