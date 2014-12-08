@@ -26,7 +26,7 @@ class Art(Base):
     extra_qty = Column(Integer, default=0)
     # case extra_qty of
     # >= 0: ebay_qty = qty+extra_qty
-    # <0:   ebay_qty = 0
+    # < 0:  not to publish on ebay
 
     prc = Column(PickleType, default=None) # hold PyDict of prices
     extra_prc = Column(Float, default=0.0)
@@ -119,16 +119,16 @@ def ebay_qty(qties, extra_q = 0):
 
 
 
-def ebay_price(prcs, extra_p = 0):
+def ebay_prc(prcs, extra_p = 0):
     'Compute ebay price'
 
     p = extra_p
     if extra_p == 0:
         # B line price (all prices >= 0)
-        if prcs[b] == 0: prcs[b] = max(prcs[c], prcs[d], prcs[dr])
-        if prcs[b] < 30: p = prcs[b]
-        elif prcs[b] < 50: p = b + 2.44
-        else: p = prcs[b]
+        if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
+        if prcs['b'] < 30: p = prcs['b']
+        elif prcs['b'] < 50: p = prcs['b'] + 2.44
+        else: p = prcs['b']
     return p         
 
 
@@ -148,7 +148,7 @@ def fx_fname(action_name, session):
 # Void functions
 # --------------
 
-def qty_alignment(session):
+def ebay_link_n_check(session):
     '''Read Fx report "attivo" and perform on DB
         - overwriting itemid with a value or blank 
         - setting qty_changed to True or False
@@ -166,39 +166,38 @@ def qty_alignment(session):
         art.qty_changed = False
         session.add(art)
 
-    with open(fname, 'rb') as f:
-        all_rows = csv.reader(f, delimiter=';', quotechar='"')
-        all_rows.next()
-        for row in all_rows:
-            ga_code_from_ebay = row[1][:-3] if len(row[1])>7 else row[1]
-            qty_from_ebay = int(row[5])
-            itemid_from_ebay = row[0].strip()
-            try:
-                art = session.query(Art).filter(Art.ga_code == ga_code_from_ebay).first()
-                if art:
-                    if ebay_qty(art.qty, art.extra_qty) != qty_from_ebay:
-                        art.qty_changed =True # set qty_changed if different
-                    art.itemid = itemid_from_ebay
-                    session.add(art)
-                else: # alert for items out of DB
-                    print 'Ad with itemID', row[0], 'out of local db'
-                        
-                if row[22].lower() == 'false':
-                    print 'Ad with itemID', row[0], 'has OutOfStockControl=false'
-                
-            except ValueError:
-                print 'rejected line:'
-                print row
-                print sys.exc_info()[0]
-                print sys.exc_info()[1]
-                print sys.exc_info()[2]
+    ebay_report_ds = ebay_report_datasource(fname)
+    for ebay_report in ebay_report_ds:
+        try:
+            art = session.query(Art).filter(Art.ga_code == ebay_report['ga_code']).first()
+            if art: # exsits, check values
+                if ebay_qty(art.qty, art.extra_qty) != ebay_report['qty']: art.qty_changed = True
+                if ebay_prc(art.prc, art.extra_prc) != ebay_report['prc']: art.prc_changed = True
+                art.itemid = ebay_report['itemid']
+                session.add(art)
+            else: # not exsist, items out of DB
+                #print 'Ad with itemID', ebay_report['itemid'], 'out of local db'
+                print ebay_report['itemid'], ebay_report['ga_code']
+                    
+            if ebay_report['OutOfStockControl'] == 'false':
+                print 'Ad with itemID', ebay_report['itemid'], 'has OutOfStockControl=false'
+            
+        except ValueError:
+            print 'rejected line:'
+            print ebay_report
+            print sys.exc_info()[0]
+            print sys.exc_info()[1]
+            print sys.exc_info()[2]
+
     os.remove(fname)
     session.commit()
 
 
 def qty_datasource(fxls):
-    '''Return a dict ga_code --> dict(store-qty)
-    func fitting the nature of file.xls downloaded from intranet'''
+    'Return a dict ga_code --> dict(store-qty)'
+    # Note: this can't be a generator, because I need to read all
+    # the excel lines before producing the first element. So must
+    # be loaded all in system's memory.
 
     qty = dict() # dict of dicts
 
@@ -257,6 +256,8 @@ def qty_datasource(fxls):
 def prc_datasource(fcsv):
     '''Return a dict ga_code --> dict(listino-price)'''
 
+    # To Improve: trasform this func in a generator to save system's memory
+
     prc = dict() # dict of dicts
 
     # Load csv file in a dict of dict
@@ -280,6 +281,31 @@ def prc_datasource(fcsv):
     return prc  
 
 
+def ebay_report_datasource(fcsv):
+    'Yield a dict of values from ebay report attivo, ga_code included'
+
+    ebay_report_line = dict()
+
+    with open(fcsv, 'rb') as f:
+        dsource_rows = csv.reader(f, delimiter=';', quotechar='"')
+        dsource_rows.next()
+        for row in dsource_rows:
+            try:
+                ebay_report_line['ga_code'] = row[1][:-3] if len(row[1])>7 else row[1]
+                ebay_report_line['qty'] = int(row[5])
+                ebay_report_line['prc'] = float(price(row[8].replace('EUR', '')))
+                ebay_report_line['itemid'] = row[0].strip()
+                ebay_report_line['OutOfStockControl'] = row[22].lower()
+
+                yield ebay_report_line
+                
+            except ValueError:
+                print 'rejected line:'
+                print row
+                print sys.exc_info()[0]
+                print sys.exc_info()[1]
+                print sys.exc_info()[2]
+  
 
 
 def db_cleaner(session):
@@ -414,7 +440,7 @@ def revise_price(session):
         for art in arts:
             fx_revise_row = {ACTION: 'Revise',
                              'ItemID': art.itemid,
-                             '*StartPrice': ebay_price(art.prc, art.extra_prc),}
+                             '*StartPrice': ebay_prc(art.prc, art.extra_prc),}
             wrt.writerow(fx_revise_row)
             art.prc_changed = False
             session.add(art)
@@ -434,7 +460,7 @@ def update_qty():
 
 def allinea():
     ses = Session()
-    qty_alignment(ses)
+    ebay_link_n_check(ses)
     ses.close()
 
 def dontsell(ga_code, notes=u''):
@@ -461,10 +487,10 @@ def prc_ds_migration(fcsv):
         for row in dsource_rows:
             try:
                 prc[row[0]] = dict() # ga_code
-                prc[row[0]]['b'] = row[1]
-                prc[row[0]]['c'] = row[2]
-                prc[row[0]]['d'] = row[3]
-                prc[row[0]]['dr'] = row[4]
+                prc[row[0]]['b'] = float(row[1]) # b_price
+                prc[row[0]]['c'] = float(row[2]) # c_price
+                prc[row[0]]['d'] = float(row[3]) # d_price
+                prc[row[0]]['dr'] = float(row[4]) # dr_price
 
             except ValueError:
                 print 'rejected line:'
@@ -477,5 +503,19 @@ def prc_ds_migration(fcsv):
 
 def db_clean(session):
     'Delete exceding rows from old db'
+    # While importing prices from the old db, also obsolete rows
+    # are added, they have qty == None.
     session.query(Art).filter(Art.qty == None).delete()
     session.commit()
+
+# Utils
+
+def mark(session):
+    'Set extra_qty = -1 for low price rows'
+
+    all_itms = session.query(Art)
+    for itm in all_itms:
+        if itm.prc['b'] < 20:
+            itm.extra_qty = -1
+            session.add(itm)
+    session.commit() 
