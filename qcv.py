@@ -172,7 +172,7 @@ def ebay_link_n_check(session):
             art = session.query(Art).filter(Art.ga_code == ebay_report['ga_code']).first()
             if art: # exsits, check values
                 if ebay_qty(art.qty, art.extra_qty) != ebay_report['qty']: art.qty_changed = True
-                if ebay_prc(art.prc, art.extra_prc) != ebay_report['prc']: art.prc_changed = True
+                if abs(ebay_prc(art.prc, art.extra_prc) - ebay_report['prc']) > 0.05: art.prc_changed = True
                 art.itemid = ebay_report['itemid']
                 session.add(art)
             else: # not exsist, items out of DB
@@ -519,3 +519,14 @@ def mark(session):
             itm.extra_qty = -1
             session.add(itm)
     session.commit() 
+
+def price_for(ga_code):
+    'Show the prices'
+
+    s = Session()
+    art = s.query(Art).filter(Art.ga_code == ga_code).first()
+    if art:
+        print str(art.prc), art.extra_prc, ebay_prc(art.prc, art.extra_prc)
+    else: print 'art not exsists'
+    s.close()
+
