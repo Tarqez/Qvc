@@ -7,7 +7,7 @@ New quantity & price manager
 Linee Guida
 -----------
 
-1. Nel db carico tutti i ga_code (senza filtrare) e marko le righe (prodotti) che non voglio online (:PERCHE?)
+1. Nel db carico tutti i ga_code (senza filtrare) e marko manualmente le righe (prodotti) che non voglio online perchè non voglio venderli (presentano un problema, p.es. sono neon, hanno la batteria scarica, sono ingombranti)
 2. Qvc permette solo 2 operazioni sulle quantità e sui prezzi:
 	1. aggiornamento quantità e prezzi
 	2. agganciamento e controllo (agganciamento ebay-db, controllo quantità e prezzi)
