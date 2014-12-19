@@ -123,7 +123,7 @@ def ebay_prc(prcs, extra_p = 0):
     'Compute ebay price'
 
     p = extra_p
-    if extra_p == 0:
+    if (extra_p == 0) & (prcs != None):
         # B line price (all prices >= 0)
         if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
         if prcs['b'] < 30: p = prcs['b']
@@ -166,25 +166,24 @@ def ebay_link_n_check(session):
         art.qty_changed = False
         session.add(art)
 
-    ebay_report_ds = ebay_report_datasource(fname)
-    for ebay_report in ebay_report_ds:
+    for ebay_report_line in ebay_report_datasource(fname):
         try:
-            art = session.query(Art).filter(Art.ga_code == ebay_report['ga_code']).first()
+            art = session.query(Art).filter(Art.ga_code == ebay_report_line['ga_code']).first()
             if art: # exsits, check values
-                if ebay_qty(art.qty, art.extra_qty) != ebay_report['qty']: art.qty_changed = True
-                if abs(ebay_prc(art.prc, art.extra_prc) - ebay_report['prc']) > 0.05: art.prc_changed = True
-                art.itemid = ebay_report['itemid']
+                if ebay_qty(art.qty, art.extra_qty) != ebay_report_line['qty']: art.qty_changed = True
+                if abs(ebay_prc(art.prc, art.extra_prc) - ebay_report_line['prc']) > 0.05: art.prc_changed = True
+                art.itemid = ebay_report_line['itemid']
                 session.add(art)
             else: # not exsist, items out of DB
-                #print 'Ad with itemID', ebay_report['itemid'], 'out of local db'
-                print ebay_report['itemid'], ebay_report['ga_code']
+                #print 'Ad with itemID', ebay_report_line['itemid'], 'out of local db'
+                print 'itemid:'+ebay_report_line['itemid'], 'customlabel:'+ebay_report_line['ga_code'], 'out of local DB'
                     
-            if ebay_report['OutOfStockControl'] == 'false':
-                print 'Ad with itemID', ebay_report['itemid'], 'has OutOfStockControl=false'
+            if ebay_report_line['OutOfStockControl'] == 'false':
+                print 'itemid:'+ebay_report_line['itemid'], 'customlabel:'+ebay_report_line['ga_code'], 'has OutOfStockControl=false'
             
         except ValueError:
             print 'rejected line:'
-            print ebay_report
+            print ebay_report_line
             print sys.exc_info()[0]
             print sys.exc_info()[1]
             print sys.exc_info()[2]
@@ -334,8 +333,9 @@ def qty_loader(session):
     # init with all DB ids
     zero_qty_row_ids = [id_tuple[0] for id_tuple in session.query(Art.id).all()]
     # Missing zero-qty-rows hack
-    #  step by step remove all row-id with qty>0
-    #  in the end will remain all zero row ids
+    #   fill in with all row ids
+    #   step by step remove all row-id with qty>0
+    #   in the end will remain all zero row ids
 
     fname = get_fname_in(folder)
     qty_rows = qty_datasource(fname) # get dict of dict from file.xls
@@ -371,7 +371,8 @@ def qty_loader(session):
         art_zero_qty = session.query(Art).filter(Art.id == id).first() # surely exsist in DB
         if art_zero_qty.qty != {}: # if it is already 0 do nothing, exit
             art_zero_qty.qty = {} # set to 0
-            art_zero_qty.timestamp = datetime.datetime.utcnow() # touch the row
+            # DO NOT TOUCH THE ROW, otherwise all zero-qty rows will be always fresh
+            # they will remain with the last timestamp when they was with qty>0
             if (art_zero_qty.itemid != u''): # if online               
                 art_zero_qty.qty_changed=True # set qty_changed                                
             session.add(art)
@@ -431,11 +432,11 @@ def revise_qty(session):
         session.commit()
 
 
-def revise_price(session):
+def revise_prc(session):
     'Fx revise price'
     smartheaders=(ACTION, 'ItemID', '*StartPrice')
-    arts = session.query(Art).filter(Art.ebay_itemid != u'', Art.prc_changed)
-    fout_name = os.path.join(DATA_PATH, fx_fname('revise_price', session))
+    arts = session.query(Art).filter(Art.itemid != u'', Art.prc_changed)
+    fout_name = os.path.join(DATA_PATH, fx_fname('revise_prc', session))
     with EbayFx(fout_name, smartheaders) as wrt:
         for art in arts:
             fx_revise_row = {ACTION: 'Revise',
