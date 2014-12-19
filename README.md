@@ -23,4 +23,4 @@ Linee Guida
 
 	f = SUM(q-1) + extra_qty | 0 if extra_qty <0
 
-	extra_prc = 0 ignore | > 0 consider this in place of prc
+	extra_prc = 0 ignore | > 0 consider this in place of prc 
