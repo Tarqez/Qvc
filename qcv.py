@@ -175,7 +175,6 @@ def ebay_link_n_check(session):
                 art.itemid = ebay_report_line['itemid']
                 session.add(art)
             else: # not exsist, items out of DB
-                #print 'Ad with itemID', ebay_report_line['itemid'], 'out of local db'
                 print 'itemid:'+ebay_report_line['itemid'], 'customlabel:'+ebay_report_line['ga_code'], 'out of local DB'
                     
             if ebay_report_line['OutOfStockControl'] == 'false':
@@ -191,6 +190,16 @@ def ebay_link_n_check(session):
     os.remove(fname)
     session.commit()
 
+def db_cleaner(session):
+    'Remove from db 3+ months old row with zero qty'
+    session.query(Art).filter(datetime.datetime.utcnow() - art.timestamp >= datetime.timedelta(90),
+                                ebay_qty(qty, extra_qty) == 0).delete()
+    session.commit()
+
+
+
+# Datasources
+# -----------
 
 def qty_datasource(fxls):
     'Return a dict ga_code --> dict(store-qty)'
@@ -304,14 +313,6 @@ def ebay_report_datasource(fcsv):
                 print sys.exc_info()[0]
                 print sys.exc_info()[1]
                 print sys.exc_info()[2]
-  
-
-
-def db_cleaner(session):
-    'Remove from db 3+ months old row with zero qty'
-    session.query(Art).filter(datetime.datetime.utcnow() - art.timestamp >= datetime.timedelta(90),
-                                ebay_qty(qty, extra_qty) == 0).delete()
-    session.commit()
 
 
 
@@ -324,37 +325,39 @@ def qty_loader(session):
 
     folder = os.path.join(DATA_PATH, 'quantities')
 
+    # unzip
     fname = get_fname_in(folder)
     with zipfile.ZipFile(fname, 'r') as zipf:
         zipf.extractall(folder)
     os.remove(fname)
 
-
-    # init with all DB ids
-    zero_qty_row_ids = [id_tuple[0] for id_tuple in session.query(Art.id).all()]
-    # Missing zero-qty-rows hack
-    #   fill in with all row ids
-    #   step by step remove all row-id with qty>0
-    #   in the end will remain all zero row ids
-
+    # get dict of dict from file.xls
     fname = get_fname_in(folder)
-    qty_rows = qty_datasource(fname) # get dict of dict from file.xls
-    for ga_code in qty_rows:
+    qty = qty_datasource(fname)
+    os.remove(fname)
+
+    # add to ds missing zero-qty item
+    for i in session.query(Art.ga_code): # for each DB row
+        if not qty.has_key(i[0]): # not in ds
+            qty[i[0]] = {} # add in ds with qty zero
+
+    for ga_code in qty:
         try:
             art = session.query(Art).filter(Art.ga_code == ga_code).first()                    
-            if art: # exsists, possible update
-                if art.qty != qty_rows[ga_code]: # if qty is to update
-                    art.qty = qty_rows[ga_code]
-                    art.timestamp = datetime.datetime.utcnow() # touch the row
-                    if (art.itemid != u''): # if it is online
-                        art.qty_changed=True # set qty_changed
+            if art: # exsists
+                if art.qty != qty[ga_code]: # qty changed
+                    if art.itemid != u'': # ad is online
+                        if ebay_qty(art.qty) != ebay_qty(qty[ga_code]): # online qty changed
+                            art.qty_changed = True # set qty_changed
+
+                    art.qty = qty[ga_code]
+                    art.timestamp = datetime.datetime.utcnow() # refresh the row
                     session.add(art)
-                zero_qty_row_ids.remove(art.id) # zero-qty hack: qty>0, remove
 
             else: # not exsists, create
                 art = Art()
                 art.ga_code = ga_code
-                art.qty = qty_rows[ga_code]
+                art.qty = qty[ga_code]
                 # TIMESTAMP goes by default
                 session.add(art)
         except ValueError:
@@ -363,20 +366,9 @@ def qty_loader(session):
             print sys.exc_info()[0]
             print sys.exc_info()[1]
             print sys.exc_info()[2]
-    os.remove(fname)        
+
     session.commit()
 
-    # for remaining ids set qty=0
-    for id in zero_qty_row_ids:
-        art_zero_qty = session.query(Art).filter(Art.id == id).first() # surely exsist in DB
-        if art_zero_qty.qty != {}: # if it is already 0 do nothing, exit
-            art_zero_qty.qty = {} # set to 0
-            # DO NOT TOUCH THE ROW, otherwise all zero-qty rows will be always fresh
-            # they will remain with the last timestamp when they was with qty>0
-            if (art_zero_qty.itemid != u''): # if online               
-                art_zero_qty.qty_changed=True # set qty_changed                                
-            session.add(art)
-    session.commit()
 
 
 def price_loader(session):
@@ -531,3 +523,12 @@ def price_for(ga_code):
     else: print 'art not exsists'
     s.close()
 
+def read_qty_prc_for(itemid):
+    'Show qty and price for given itemid'
+
+    s = Session()
+    art = s.query(Art).filter(Art.itemid == itemid).first()
+    if art:
+        print str(art.qty), art.extra_qty, str(art.prc), art.extra_prc
+    else: print 'art not exsists'
+    s.close()
