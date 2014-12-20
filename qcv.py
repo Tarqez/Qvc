@@ -133,14 +133,14 @@ def ebay_prc(prcs, extra_p = 0):
 
 
 
-def fx_fname(action_name, session):
+def fx_fname(action_name):
     'Build & return Fx filename with a sequence number suffix'
 
-    seq = session.query(Sequence).first()
+    seq = s.query(Sequence).first()
     if seq: seq.number += 1
     else: seq = Sequence(number=0)      
-    session.add(seq)
-    session.commit()
+    s.add(seq)
+    s.commit()
     
     return action_name+'_'+str(seq.number).zfill(4)+'.csv'
 
@@ -148,7 +148,7 @@ def fx_fname(action_name, session):
 # Void functions
 # --------------
 
-def ebay_link_n_check(session):
+def ebay_link_n_check():
     '''Read Fx report "attivo" and perform on DB
         - overwriting itemid with a value or blank 
         - setting qty_changed to True or False
@@ -160,20 +160,20 @@ def ebay_link_n_check(session):
     fname = get_fname_in(folder)
 
     # Reset all itemid and qty_changed fields
-    all_arts = session.query(Art)
+    all_arts = s.query(Art)
     for art in all_arts:
         art.itemid = u''
         art.qty_changed = False
-        session.add(art)
+        s.add(art)
 
     for ebay_report_line in ebay_report_datasource(fname):
         try:
-            art = session.query(Art).filter(Art.ga_code == ebay_report_line['ga_code']).first()
+            art = s.query(Art).filter(Art.ga_code == ebay_report_line['ga_code']).first()
             if art: # exsits, check values
                 if ebay_qty(art.qty, art.extra_qty) != ebay_report_line['qty']: art.qty_changed = True
                 if abs(ebay_prc(art.prc, art.extra_prc) - ebay_report_line['prc']) > 0.05: art.prc_changed = True
                 art.itemid = ebay_report_line['itemid']
-                session.add(art)
+                s.add(art)
             else: # not exsist, items out of DB
                 print 'itemid:'+ebay_report_line['itemid'], 'customlabel:'+ebay_report_line['ga_code'], 'out of local DB'
                     
@@ -188,13 +188,13 @@ def ebay_link_n_check(session):
             print sys.exc_info()[2]
 
     os.remove(fname)
-    session.commit()
+    s.commit()
 
-def db_cleaner(session):
+def db_cleaner():
     'Remove from db 3+ months old row with zero qty'
-    session.query(Art).filter(datetime.datetime.utcnow() - art.timestamp >= datetime.timedelta(90),
+    s.query(Art).filter(datetime.datetime.utcnow() - art.timestamp >= datetime.timedelta(90),
                                 ebay_qty(qty, extra_qty) == 0).delete()
-    session.commit()
+    s.commit()
 
 
 
@@ -320,7 +320,7 @@ def ebay_report_datasource(fcsv):
 # Loaders from data Sources
 # -------------------------
         
-def qty_loader(session):
+def qty_loader():
     "Load ('ga_code', 'qty') into DB"
 
     folder = os.path.join(DATA_PATH, 'quantities')
@@ -337,13 +337,13 @@ def qty_loader(session):
     os.remove(fname)
 
     # add to ds missing zero-qty item
-    for i in session.query(Art.ga_code): # for each DB row
+    for i in s.query(Art.ga_code): # for each DB row
         if not qty.has_key(i[0]): # not in ds
             qty[i[0]] = {} # add in ds with qty zero
 
     for ga_code in qty:
         try:
-            art = session.query(Art).filter(Art.ga_code == ga_code).first()                    
+            art = s.query(Art).filter(Art.ga_code == ga_code).first()                    
             if art: # exsists
                 if art.qty != qty[ga_code]: # qty changed
                     if art.itemid != u'': # ad is online
@@ -352,14 +352,14 @@ def qty_loader(session):
 
                     art.qty = qty[ga_code]
                     art.timestamp = datetime.datetime.utcnow() # refresh the row
-                    session.add(art)
+                    s.add(art)
 
             else: # not exsists, create
                 art = Art()
                 art.ga_code = ga_code
                 art.qty = qty[ga_code]
                 # TIMESTAMP goes by default
-                session.add(art)
+                s.add(art)
         except ValueError:
             print 'rejected line:'
             print ga_code
@@ -367,11 +367,11 @@ def qty_loader(session):
             print sys.exc_info()[1]
             print sys.exc_info()[2]
 
-    session.commit()
+    s.commit()
 
 
 
-def price_loader(session):
+def price_loader():
     "Load ('ga_code', 'prc') into DB"
     
     folder = os.path.join(DATA_PATH, 'prices')
@@ -381,19 +381,19 @@ def price_loader(session):
     prc_rows = prc_ds_migration(fname)
     for ga_code in prc_rows:
         try:
-            art = session.query(Art).filter(Art.ga_code == ga_code).first()
+            art = s.query(Art).filter(Art.ga_code == ga_code).first()
             if art: # exsits, possible update
                 if art.prc != prc_rows[ga_code]: # if prc is to update
                     art.prc = prc_rows[ga_code]
                     if (art.itemid != u''): # if it is online
                         art.prc_changed=True # set  prc_changed
-                    session.add(art)
+                    s.add(art)
             
             else: # not exsists, create
                 art = Art()
                 art.ga_code = ga_code
                 art.prc = prc_rows[ga_code]
-                session.add(art)
+                s.add(art)
         except ValueError:
             print 'rejected line:'
             print ga_code
@@ -401,18 +401,18 @@ def price_loader(session):
             print sys.exc_info()[1]
             print sys.exc_info()[2]
     os.remove(fname)
-    session.commit()
+    s.commit()
             
 
 
 # FX csv file creators
 # --------------------
 
-def revise_qty(session):
+def revise_qty():
     'Fx revise quantity action'
     smartheaders = (ACTION, 'ItemID', '*Quantity')
-    arts = session.query(Art).filter(Art.itemid != u'', Art.qty_changed)
-    fout_name = os.path.join(DATA_PATH, fx_fname('revise_qty', session))
+    arts = s.query(Art).filter(Art.itemid != u'', Art.qty_changed)
+    fout_name = os.path.join(DATA_PATH, fx_fname('revise_qty'))
     with EbayFx(fout_name, smartheaders) as wrt:
         for art in arts:
             fx_revise_row = {ACTION: 'Revise',
@@ -420,15 +420,15 @@ def revise_qty(session):
                              '*Quantity': ebay_qty(art.qty, art.extra_qty),}
             wrt.writerow(fx_revise_row)
             art.qty_changed = False
-            session.add(art)
-        session.commit()
+            s.add(art)
+        s.commit()
 
 
-def revise_prc(session):
+def revise_prc():
     'Fx revise price'
     smartheaders=(ACTION, 'ItemID', '*StartPrice')
-    arts = session.query(Art).filter(Art.itemid != u'', Art.prc_changed)
-    fout_name = os.path.join(DATA_PATH, fx_fname('revise_prc', session))
+    arts = s.query(Art).filter(Art.itemid != u'', Art.prc_changed)
+    fout_name = os.path.join(DATA_PATH, fx_fname('revise_prc'))
     with EbayFx(fout_name, smartheaders) as wrt:
         for art in arts:
             fx_revise_row = {ACTION: 'Revise',
@@ -436,8 +436,8 @@ def revise_prc(session):
                              '*StartPrice': ebay_prc(art.prc, art.extra_prc),}
             wrt.writerow(fx_revise_row)
             art.prc_changed = False
-            session.add(art)
-        session.commit()
+            s.add(art)
+        s.commit()
 
            
 
@@ -445,10 +445,11 @@ def revise_prc(session):
 # ----------------    
         
 def update_qty():
-    ses = Session()
-    qty_loader(ses)
-    revise_qty(ses)
-    ses.close()
+    global s 
+    s = Session()
+    qty_loader()
+    revise_qty()
+    s.close()
 
 
 def allinea():
@@ -458,19 +459,17 @@ def allinea():
 
 def dontsell(ga_code, notes=u''):
     'Set extra_qty = -1'
-    s = Session()
     item = s.query(Art).filter(Art.ga_code == ga_code).first()
     item.extra_qty = -1
     item.notes = notes
     s.add(item)
     s.commit()
-    s.close()
 
 
-# Migration aid
+# Migration tools
 
-def prc_ds_migration(fcsv):
-    'to import prices exported from old db'  
+def oldDB_prc_datasource(fcsv):
+    'Prices exported from old db datasource'  
 
     prc = dict() # dict of dicts
 
@@ -494,41 +493,37 @@ def prc_ds_migration(fcsv):
     return prc  
 
 
-def db_clean(session):
+def db_clean():
     'Delete exceding rows from old db'
     # While importing prices from the old db, also obsolete rows
     # are added, they have qty == None.
-    session.query(Art).filter(Art.qty == None).delete()
-    session.commit()
+    s.query(Art).filter(Art.qty == None).delete()
+    s.commit()
 
 # Utils
 
-def mark(session):
+def mark():
     'Set extra_qty = -1 for low price rows'
 
-    all_itms = session.query(Art)
+    all_itms = s.query(Art)
     for itm in all_itms:
         if itm.prc['b'] < 20:
             itm.extra_qty = -1
-            session.add(itm)
-    session.commit() 
+            s.add(itm)
+    s.commit() 
 
 def price_for(ga_code):
     'Show the prices'
 
-    s = Session()
     art = s.query(Art).filter(Art.ga_code == ga_code).first()
     if art:
         print str(art.prc), art.extra_prc, ebay_prc(art.prc, art.extra_prc)
     else: print 'art not exsists'
-    s.close()
 
 def read_qty_prc_for(itemid):
     'Show qty and price for given itemid'
 
-    s = Session()
     art = s.query(Art).filter(Art.itemid == itemid).first()
     if art:
         print str(art.qty), art.extra_qty, str(art.prc), art.extra_prc
     else: print 'art not exsists'
-    s.close()
