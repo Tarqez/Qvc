@@ -231,6 +231,10 @@ def qty_datasource(fxls):
                 print sys.exc_info()[0]
                 print sys.exc_info()[1]
 
+    return qty
+
+def stats_for(qty):
+    'Print stats about qty from datasource'
     # stats
     print 'C/V stores stats'
     print '----------------', '\n'
@@ -259,7 +263,7 @@ def qty_datasource(fxls):
     for m in store_stats:
         print '%-5s %-8s%-8s' % (m, store_stats[m]['itms'], store_stats[m]['pcs'])
 
-    return qty
+
 
 def prc_datasource(fcsv):
     '''Return a dict ga_code --> dict(listino-price)'''
@@ -323,6 +327,8 @@ def ebay_report_datasource(fcsv):
 def qty_loader():
     "Load ('ga_code', 'qty') into DB"
 
+    print 'Reading qty datasource ...', '\n'
+
     folder = os.path.join(DATA_PATH, 'quantities')
 
     # unzip
@@ -335,6 +341,10 @@ def qty_loader():
     fname = get_fname_in(folder)
     qty = qty_datasource(fname)
     os.remove(fname)
+
+    stats_for(qty)
+
+    print '\n', 'Loading qty datasource ... ' 
 
     # add to ds missing zero-qty item
     for i in s.query(Art.ga_code): # for each DB row
@@ -453,9 +463,10 @@ def update_qty():
 
 
 def allinea():
-    ses = Session()
-    ebay_link_n_check(ses)
-    ses.close()
+    global s
+    s = Session()
+    ebay_link_n_check()
+    s.close()
 
 def dontsell(ga_code, notes=u''):
     'Set extra_qty = -1'
