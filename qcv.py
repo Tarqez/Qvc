@@ -148,7 +148,7 @@ def fx_fname(action_name):
 def ebay_link_n_check():
     '''Read Fx report "attivo" and perform on DB
         - overwriting itemid with a value or blank 
-        - setting update_qty to True or False
+        - setting update_qty, update_prc to True or False
     finally 
         - check if there are ads out of DB
         - check if there are ads with OutOfStockControl=false'''
@@ -156,19 +156,23 @@ def ebay_link_n_check():
     folder = os.path.join(DATA_PATH, 'attivo_report')
     fname = get_fname_in(folder)
 
-    # Reset all itemid and update_qty fields
+    # Reset all: itemid, update_prc and update_qty
     all_arts = s.query(Art)
     for art in all_arts:
         art.itemid = u''
         art.update_qty = False
+        art.update_prc = False
         s.add(art)
 
+    #
     for ebay_report_line in ebay_report_datasource(fname):
         try:
             art = s.query(Art).filter(Art.ga_code == ebay_report_line['ga_code']).first()
             if art: # exsits, check values
-                if ebay_qty(art.qty, art.extra_qty) != ebay_report_line['qty']: art.update_qty = True
-                if abs(ebay_prc(art.prc, art.extra_prc) - ebay_report_line['prc']) > 0.05: art.update_prc = True
+                if ebay_qty(art.qty, art.extra_qty) != ebay_report_line['qty']:
+                    art.update_qty = True
+                if abs(ebay_prc(art.prc, art.extra_prc) - ebay_report_line['prc']) > 0.05:
+                    art.update_prc = True
                 art.itemid = ebay_report_line['itemid']
                 s.add(art)
             else: # not exsist, items out of DB
@@ -188,7 +192,7 @@ def ebay_link_n_check():
     s.commit()
 
 def db_cleaner():
-    'Remove from db 3+ months old row with zero qty'
+    'Remove from DB 3+ months old row with zero qty'
     s.query(Art).filter(datetime.datetime.utcnow() - art.timestamp >= datetime.timedelta(90),
                                 ebay_qty(qty, extra_qty) == 0).delete()
     s.commit()
@@ -222,7 +226,28 @@ def stats_for(qty):
     print '%-5s %-8s%-8s' % ('-----', '-----', '---')
 
     for m in store_stats:
-        print '%-5s %-8s%-8s' % (m, store_stats[m]['itms'], store_stats[m]['pcs'])    
+        print '%-5s %-8s%-8s' % (m, store_stats[m]['itms'], store_stats[m]['pcs'])  
+
+
+def set_extra_prc(ga_code, price)  :
+    'Set extra_price for ga_code'
+
+    art = s.query(Art).filter(Art.ga_code == ga_code).first()
+    if art:
+        art.extra_prc = price
+        s.add(art)
+        s.commit()
+    else: print 'no ga_code found in DB'
+
+def set_extra_qty(ga_code, qnty):
+    'Set extra_qty for ga_code'
+
+    art = s.query(Art).filter(Art.ga_code == ga_code).first()
+    if art:
+        art.extra_qty = qnty
+        s.add(art)
+        s.commit()
+    else: print 'no ga_code found in DB'    
 
 
 
@@ -353,12 +378,12 @@ def qty_loader():
         try:
             art = s.query(Art).filter(Art.ga_code == ga_code).first()                    
             if art: # exsists
-                if art.qty != qty[ga_code]: # ds qty changed
-                    if art.itemid != u'': # ad is online
-                        if ebay_qty(art.qty) != ebay_qty(qty[ga_code]): # online qty changed
-                            art.update_qty = True # set update_qty
+                if art.qty != qty[ga_code]: # DB qty changed
+                    if art.itemid != u'': # ad is on eBay
+                        if ebay_qty(art.qty) != ebay_qty(qty[ga_code]): # eBay qty changed
+                            art.update_qty = True
 
-                    art.qty = qty[ga_code] # update qty
+                    art.qty = qty[ga_code] # update qty on DB
                     art.timestamp = datetime.datetime.utcnow() # refresh the row
                     s.add(art)
 
@@ -393,12 +418,12 @@ def price_loader():
         try:
             art = s.query(Art).filter(Art.ga_code == ga_code).first()
             if art: # exsits
-                if art.prc != prc[ga_code]: # ds prc changed
-                    if art.itemid != u'': # ad is online
-                        if ebay_prc(art.prc) != ebay_prc(prc[ga_code]): # online prc changed
-                            art.update_prc=True # set  update_prc
+                if art.prc != prc[ga_code]: # DB prc changed
+                    if art.itemid != u'': # ad is on eBay
+                        if ebay_prc(art.prc) != ebay_prc(prc[ga_code]): # eBay prc changed
+                            art.update_prc=True
 
-                    art.prc = prc[ga_code] # update prc
+                    art.prc = prc[ga_code] # update prc on DB
                     s.add(art)
             
             else: # not exsists, create
@@ -512,7 +537,10 @@ def db_clean():
     s.query(Art).filter(Art.qty == None).delete()
     s.commit()
 
+
 # Utils
+# -----
+
 
 def mark():
     'Set extra_qty = -1 for low price rows'
