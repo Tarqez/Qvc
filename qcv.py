@@ -24,17 +24,14 @@ class Art(Base):
 
     qty = Column(PickleType, default=None) # hold PyDict of quantities
     extra_qty = Column(Integer, default=0)
-    # case extra_qty of
-    # >= 0: ebay_qty = qty+extra_qty
-    # < 0:  not to publish on ebay
 
     prc = Column(PickleType, default=None) # hold PyDict of prices
     extra_prc = Column(Float, default=0.0)
 
     notes = Column(Unicode, default=u'')
-    qty_changed = Column(Boolean, default=False)
-    prc_changed = Column(Boolean, default=False)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow) # don't know how behave    
+    update_qty = Column(Boolean, default=False)
+    update_prc = Column(Boolean, default=False)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)    
 
 class Sequence(Base):
     __tablename__ = 'sequences'
@@ -151,7 +148,7 @@ def fx_fname(action_name):
 def ebay_link_n_check():
     '''Read Fx report "attivo" and perform on DB
         - overwriting itemid with a value or blank 
-        - setting qty_changed to True or False
+        - setting update_qty to True or False
     finally 
         - check if there are ads out of DB
         - check if there are ads with OutOfStockControl=false'''
@@ -159,19 +156,19 @@ def ebay_link_n_check():
     folder = os.path.join(DATA_PATH, 'attivo_report')
     fname = get_fname_in(folder)
 
-    # Reset all itemid and qty_changed fields
+    # Reset all itemid and update_qty fields
     all_arts = s.query(Art)
     for art in all_arts:
         art.itemid = u''
-        art.qty_changed = False
+        art.update_qty = False
         s.add(art)
 
     for ebay_report_line in ebay_report_datasource(fname):
         try:
             art = s.query(Art).filter(Art.ga_code == ebay_report_line['ga_code']).first()
             if art: # exsits, check values
-                if ebay_qty(art.qty, art.extra_qty) != ebay_report_line['qty']: art.qty_changed = True
-                if abs(ebay_prc(art.prc, art.extra_prc) - ebay_report_line['prc']) > 0.05: art.prc_changed = True
+                if ebay_qty(art.qty, art.extra_qty) != ebay_report_line['qty']: art.update_qty = True
+                if abs(ebay_prc(art.prc, art.extra_prc) - ebay_report_line['prc']) > 0.05: art.update_prc = True
                 art.itemid = ebay_report_line['itemid']
                 s.add(art)
             else: # not exsist, items out of DB
@@ -197,12 +194,44 @@ def db_cleaner():
     s.commit()
 
 
+def stats_for(qty):
+    'Print stats about qty from datasource'
+    # stats
+    print 'C/V stores stats'
+    print '----------------', '\n'
+
+    print 'Num of items in all stores:', len(qty), '\n'
+
+    store_stats = dict()
+
+    for gacode in qty:
+        for m in qty[gacode]:
+            # init
+            if m not in store_stats:
+                store_stats[m] = {'itms':0, 'pcs':0}
+            # inc    
+            store_stats[m]['itms'] = store_stats[m]['itms'] + 1
+            store_stats[m]['pcs'] = store_stats[m]['pcs'] + qty[gacode][m]
+    
+    all_pcs = 0
+    for m in store_stats:
+        all_pcs += store_stats[m]['pcs']
+    
+    print 'Num of pieces in all stores:', all_pcs, '\n'
+    print '%-5s %-8s%-8s' % ('Store', 'items','pcs')
+    print '%-5s %-8s%-8s' % ('-----', '-----', '---')
+
+    for m in store_stats:
+        print '%-5s %-8s%-8s' % (m, store_stats[m]['itms'], store_stats[m]['pcs'])    
+
+
 
 # Datasources
 # -----------
 
 def qty_datasource(fxls):
-    'Return a dict ga_code --> dict(store-qty)'
+    'Return dict: ga_code --> dict(store-qty)'
+
     # Note: this can't be a generator, because I need to read all
     # the excel lines before producing the first element. So must
     # be loaded all in system's memory.
@@ -233,42 +262,11 @@ def qty_datasource(fxls):
 
     return qty
 
-def stats_for(qty):
-    'Print stats about qty from datasource'
-    # stats
-    print 'C/V stores stats'
-    print '----------------', '\n'
-
-    print 'Num of items in all stores:', len(qty), '\n'
-
-    store_stats = dict()
-
-    for gacode in qty:
-        for m in qty[gacode]:
-            # init
-            if m not in store_stats:
-                store_stats[m] = {'itms':0, 'pcs':0}
-            # inc    
-            store_stats[m]['itms'] = store_stats[m]['itms'] + 1
-            store_stats[m]['pcs'] = store_stats[m]['pcs'] + qty[gacode][m]
-    
-    all_pcs = 0
-    for m in store_stats:
-        all_pcs += store_stats[m]['pcs']
-    
-    print 'Num of pieces in all stores:', all_pcs, '\n'
-    print '%-5s %-8s%-8s' % ('Store', 'items','pcs')
-    print '%-5s %-8s%-8s' % ('-----', '-----', '---')
-
-    for m in store_stats:
-        print '%-5s %-8s%-8s' % (m, store_stats[m]['itms'], store_stats[m]['pcs'])
-
-
 
 def prc_datasource(fcsv):
     '''Return a dict ga_code --> dict(listino-price)'''
 
-    # To Improve: trasform this func in a generator to save system's memory
+    # TO DO improving: trasform this func in a generator to save system's memory
 
     prc = dict() # dict of dicts
 
@@ -321,11 +319,11 @@ def ebay_report_datasource(fcsv):
 
 
 
-# Loaders from data Sources
-# -------------------------
+# Loaders from data Sources to DB
+# -------------------------------
         
 def qty_loader():
-    "Load ('ga_code', 'qty') into DB"
+    "Load ('ga_code', 'qty') into DB & understand if qty is to update"
 
     print 'Reading qty datasource ...', '\n'
 
@@ -346,7 +344,7 @@ def qty_loader():
 
     print '\n', 'Loading qty datasource ... ' 
 
-    # add to ds missing zero-qty item
+    # add to qty datasource missing zero-qty item
     for i in s.query(Art.ga_code): # for each DB row
         if not qty.has_key(i[0]): # not in ds
             qty[i[0]] = {} # add in ds with qty zero
@@ -355,12 +353,12 @@ def qty_loader():
         try:
             art = s.query(Art).filter(Art.ga_code == ga_code).first()                    
             if art: # exsists
-                if art.qty != qty[ga_code]: # qty changed
+                if art.qty != qty[ga_code]: # ds qty changed
                     if art.itemid != u'': # ad is online
                         if ebay_qty(art.qty) != ebay_qty(qty[ga_code]): # online qty changed
-                            art.qty_changed = True # set qty_changed
+                            art.update_qty = True # set update_qty
 
-                    art.qty = qty[ga_code]
+                    art.qty = qty[ga_code] # update qty
                     art.timestamp = datetime.datetime.utcnow() # refresh the row
                     s.add(art)
 
@@ -380,29 +378,33 @@ def qty_loader():
     s.commit()
 
 
-
 def price_loader():
-    "Load ('ga_code', 'prc') into DB"
+    "Load ('ga_code', 'prc') into DB & understand if prc is to update"
     
     folder = os.path.join(DATA_PATH, 'prices')
 
+    # get dict of dict from file.csv
     fname = get_fname_in(folder)
-    #prc_rows = prc_datasource(fname) # get dict of dict from file.csv
-    prc_rows = prc_ds_migration(fname)
-    for ga_code in prc_rows:
+    prc = prc_datasource(fname)
+    #prc = oldDB_prc_datasource(fname)
+    os.remove(fname)
+
+    for ga_code in prc:
         try:
             art = s.query(Art).filter(Art.ga_code == ga_code).first()
-            if art: # exsits, possible update
-                if art.prc != prc_rows[ga_code]: # if prc is to update
-                    art.prc = prc_rows[ga_code]
-                    if (art.itemid != u''): # if it is online
-                        art.prc_changed=True # set  prc_changed
+            if art: # exsits
+                if art.prc != prc[ga_code]: # ds prc changed
+                    if art.itemid != u'': # ad is online
+                        if ebay_prc(art.prc) != ebay_prc(prc[ga_code]): # online prc changed
+                            art.update_prc=True # set  update_prc
+
+                    art.prc = prc[ga_code] # update prc
                     s.add(art)
             
             else: # not exsists, create
                 art = Art()
                 art.ga_code = ga_code
-                art.prc = prc_rows[ga_code]
+                art.prc = prc[ga_code]
                 s.add(art)
         except ValueError:
             print 'rejected line:'
@@ -410,10 +412,9 @@ def price_loader():
             print sys.exc_info()[0]
             print sys.exc_info()[1]
             print sys.exc_info()[2]
-    os.remove(fname)
+    
     s.commit()
             
-
 
 # FX csv file creators
 # --------------------
@@ -421,7 +422,7 @@ def price_loader():
 def revise_qty():
     'Fx revise quantity action'
     smartheaders = (ACTION, 'ItemID', '*Quantity')
-    arts = s.query(Art).filter(Art.itemid != u'', Art.qty_changed)
+    arts = s.query(Art).filter(Art.itemid != u'', Art.update_qty)
     fout_name = os.path.join(DATA_PATH, fx_fname('revise_qty'))
     with EbayFx(fout_name, smartheaders) as wrt:
         for art in arts:
@@ -429,7 +430,7 @@ def revise_qty():
                              'ItemID': art.itemid,
                              '*Quantity': ebay_qty(art.qty, art.extra_qty),}
             wrt.writerow(fx_revise_row)
-            art.qty_changed = False
+            art.update_qty = False
             s.add(art)
         s.commit()
 
@@ -437,7 +438,7 @@ def revise_qty():
 def revise_prc():
     'Fx revise price'
     smartheaders=(ACTION, 'ItemID', '*StartPrice')
-    arts = s.query(Art).filter(Art.itemid != u'', Art.prc_changed)
+    arts = s.query(Art).filter(Art.itemid != u'', Art.update_prc)
     fout_name = os.path.join(DATA_PATH, fx_fname('revise_prc'))
     with EbayFx(fout_name, smartheaders) as wrt:
         for art in arts:
@@ -445,7 +446,7 @@ def revise_prc():
                              'ItemID': art.itemid,
                              '*StartPrice': ebay_prc(art.prc, art.extra_prc),}
             wrt.writerow(fx_revise_row)
-            art.prc_changed = False
+            art.update_prc = False
             s.add(art)
         s.commit()
 
