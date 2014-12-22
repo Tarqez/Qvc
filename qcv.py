@@ -107,7 +107,7 @@ def ebay_qty(qties, extra_q = 0):
                        'm9a':'small and highly unreliable',
                        'mgt':'small and particular'}
     q = 0
-    if extra_q >= 0:
+    if (extra_q >= 0) & (qties != None):
         for m in qties:
             if m in excluded_stores: continue
             q += qties[m]-1 if qties[m]>=1 else 0
@@ -403,15 +403,15 @@ def qty_loader():
     s.commit()
 
 
-def price_loader():
+def prc_loader():
     "Load ('ga_code', 'prc') into DB & understand if prc is to update"
     
     folder = os.path.join(DATA_PATH, 'prices')
 
     # get dict of dict from file.csv
     fname = get_fname_in(folder)
-    prc = prc_datasource(fname)
-    #prc = oldDB_prc_datasource(fname)
+    #prc = prc_datasource(fname)
+    prc = oldDB_prc_datasource(fname)
     os.remove(fname)
 
     for ga_code in prc:
@@ -534,7 +534,7 @@ def db_clean():
     'Delete exceding rows from old db'
     # While importing prices from the old db, also obsolete rows
     # are added, they have qty == None.
-    s.query(Art).filter(Art.qty == None).delete()
+    s.query(Art).filter(Art.qty == None, Art.itemid == u'').delete()
     s.commit()
 
 
