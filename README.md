@@ -60,13 +60,9 @@ Colonne del db:
 
 
 
-                {>= 0 ... ho pezzi in più
-    extra_qty = {
-                {< 0  ... righe che non voglio online
+                {> 0 --> ebay_qty = extra_qty
+    extra_qty = {= 0 --> ebay_qty = SUM(q-1)
+                {< 0 --> ebay_qty = 0
 
-
-    ebay_qty = f(qty, extra_qty)
-
-    f = SUM(q-1) + extra_qty | 0 if extra_qty <0
-
-    extra_prc = 0 ignore | > 0 consider this in place of prc 
+    extra_prc = {> 0 --> ebay_prc = extra_prc
+    			{<= 0 -> ebay_prc = f(b,c,d,dr) 

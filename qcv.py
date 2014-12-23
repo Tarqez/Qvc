@@ -107,11 +107,13 @@ def ebay_qty(qties, extra_q = 0):
                        'm9a':'small and highly unreliable',
                        'mgt':'small and particular'}
     q = 0
-    if (extra_q >= 0) & (qties != None):
-        for m in qties:
-            if m in excluded_stores: continue
-            q += qties[m]-1 if qties[m]>=1 else 0
-        q += extra_q
+    if extra_qty > 0:
+        q = extra_qty
+    elif extra_qty = 0:
+        if qties != None:
+            for m in qties:
+                if m in excluded_stores: continue
+                q += qties[m]-1 if qties[m]>=1 else 0
     return q
 
 
@@ -119,13 +121,16 @@ def ebay_qty(qties, extra_q = 0):
 def ebay_prc(prcs, extra_p = 0):
     'Compute ebay price'
 
-    p = extra_p
-    if (extra_p == 0) & (prcs != None):
-        # B line price (all prices >= 0)
-        if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
-        if prcs['b'] < 30: p = prcs['b']
-        elif prcs['b'] < 50: p = prcs['b'] + 2.44
-        else: p = prcs['b']
+    p = 0
+    if extra_prc > 0:
+        p = extra_prc
+    else:
+        if prcs != None:
+            # B line price (all prices >= 0)
+            if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
+            if prcs['b'] < 30: p = prcs['b']
+            elif prcs['b'] < 50: p = prcs['b'] + 2.44
+            else: p = prcs['b']            
     return p         
 
 
