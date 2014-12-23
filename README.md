@@ -66,3 +66,6 @@ Colonne del db:
 
     extra_prc = {> 0 --> ebay_prc = extra_prc
     			{<= 0 -> ebay_prc = f(b,c,d,dr) 
+
+    NOTA: extra_qty e extra_prc sono valori manuali, vanno 
+    sempre aggiornati manualmente nel DB quando cambiamo

@@ -4,6 +4,7 @@ import sys, csv, os, xlrd, zipfile, datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import or_
 from sqlalchemy import Column, Integer, Float, Unicode, Boolean, DateTime, PickleType
 
 
@@ -107,9 +108,9 @@ def ebay_qty(qties, extra_q = 0):
                        'm9a':'small and highly unreliable',
                        'mgt':'small and particular'}
     q = 0
-    if extra_qty > 0:
-        q = extra_qty
-    elif extra_qty = 0:
+    if extra_q > 0:
+        q = extra_q
+    elif extra_q == 0:
         if qties != None:
             for m in qties:
                 if m in excluded_stores: continue
@@ -122,8 +123,8 @@ def ebay_prc(prcs, extra_p = 0):
     'Compute ebay price'
 
     p = 0
-    if extra_prc > 0:
-        p = extra_prc
+    if extra_p > 0:
+        p = extra_p
     else:
         if prcs != None:
             # B line price (all prices >= 0)
@@ -572,3 +573,13 @@ def read_qty_prc_for(itemid):
     if art:
         print str(art.qty), art.extra_qty, str(art.prc), art.extra_prc
     else: print 'art not exsists'
+
+def reset_update():
+    'Set update_qty & update_prc to False, for all items'
+
+    all_arts = s.query(Art).filter(or_(Art.update_prc == True, Art.update_qty == True))
+    for art in all_arts:
+        art.update_qty = False
+        art.update_prc = False
+        s.add(art)
+    s.commit()
