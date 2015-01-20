@@ -2,7 +2,7 @@ Qpm
 ===
 
 __Quantity & Price Manager for eBay ads__
-_Updating eBay price and quantity of ads from Sales Management Software (as of now SMS) export_
+_Updating price and quantity of eBay ads from Sales Management Software (as of now SMS) export_
 
 ### Technologies
 Python, SqLite, SQLAlchemy, eBay FileExchange
@@ -16,18 +16,25 @@ __ga_code__ (or gacode) - represents SMS product primary key
 
 Abstract
 --------
-Qpm from input files of quantity and price exported from SMS (datasources), outputs a FX csv file for update eBay.
+Qpm takes in input datasources (files of quantity and/or price) and outputs a FX csv file for update eBay.
 
 
 Linee Guida
 -----------
-Carico nel DB i datasource dei prezzi e delle quantità (ogni riga ha il ga_code), aggiungo i nuovi ga_code e aggiorno quelli esistenti se il nuovo valore di prezzo o quantità differisce dal vecchio (economia delle risorse: scrivo nel DB solo se necessario). Ad ogni caricamento ho un DB aggiornato con il SMS.
+Ogni riga del DB è un prodotto con il suo ga_code unico.
+Carico nel DB i datasource dei valori (prezzi o quantità) con la regola: aggiungo i nuovi ga_code e aggiorno quelli esistenti se e solo se il nuovo valore differisce dal vecchio (economia delle risorse: scrivo nel DB solo se necessario). Ad ogni caricamento ho un DB aggiornato con il SMS.
 
-Nell'aggiornamento, la riga/prodotto/ga_code viene segnata se il valore (prezzo o quantità) su eBay è da aggiornare (economia delle risorse anche qui: non aggiorno eBay se non è necessario). I valori su ebay sono funzione dei valori del datasource e di quelli manuali, p.es. __ebay_qty(qty, extra_qty)__ con __qty__ valore datasource, __extra_qty__ valore manuale. Valore manuale significa che non proviene da un datasource dunque è "manualmente" inserito nel DB.
+Nell'aggiornare le righe esistenti, queste possono essere segnate come contenenti valori freschi per aggiornare eBay se si verificano alcune condizioni, p.es. nel caso delle quantità:
 
-Un valore su eBay è da aggiornare allora, se il nuovo valore della funzione (calcolata sul nuovo valore del datasource) differisce dal vecchio; nel calcolo il valore manuale è costante ed è quello attuale nel DB, dunque __il sistema NON rileva le variazioni dei valori manuali__ che pertanto ad ogni cambiamento, bisogna manualmente aggiornare il valore su eBay.
+- la quantità nel datasource è cambiata (il dict qty è cambiato)
+- la riga è online (ha un itemid)
+- la funzione ebay_qty(qty, extra_qty=0) è cambiata
 
-Si possono segnare nel DB le righe/prodotto che non voglio vendere, per cui le quantità su eBay devono andare a zero (indipendentemente dal datasource) e le inserzioni potranno essere chiuse se lo si ritiene opportuno.
+Da notare come i valori manuali sono ignorati extra_qty=0. Valore manuale significa che non proviene da un datasource dunque è "manualmente" inserito nel DB. Ne consegue che il sistema rileva SOLO le variazioni provenienti dal datasource e NON rileva le variazioni manuali.
+
+Segnare le righe come da aggiornare su eBay è necessario per l'economia delle risorse: non aggiorno eBay se non è necessario, questo potrebbe tradursi in file csv FX da caricare su ebay di poche decine di righe invece di migliaia.
+
+Si possono segnare nel DB le righe che non voglio vendere, per cui le quantità su eBay devono andare a zero (indipendentemente dal datasource) e le inserzioni potranno essere chiuse se lo si ritiene opportuno.
 
 Quando su eBay si caricano in qualunque modo nuove inserzioni, avendo cura di indicare nel CustomLabel il ga_code, si rende necessaria l'operzione di agganciamento delle nuove inserzioni al DB. In altre parole bisogna inserire nel DB gli itemID generati da eBay per quelle inserzioni. 
 
@@ -35,18 +42,20 @@ Possiamo reperire tali itemID dal report eBay delle inserzioni attive online, qu
 
 L'operazione di agganciamento, oltre a controllare prezzi e quantità controlla anche gli itemID esistenti, è una vera e propria operzione di reset.
 
-Il DB, dopo il caricamento di un datasource, ha segnate le righe/prodotto per l'aggiornamento dei prezzi e/o quantità, queste info sono consumate dai generatori dei csv FX di eBay che riportano le righe segnate alla condizione di normalità.
+Il DB, dopo il caricamento di un datasource, ha segnate le righe per l'aggiornamento dei prezzi e/o quantità, queste info sono consumate dai generatori dei csv FX di eBay che riportano le righe segnate alla condizione di normalità.
 
  Ogni riga del DB ha un timestamp che riporta il momento dell'ultimo aggiornamento del valore qty, sappiamo allora da quanto tempo non viene movimentato quell'articolo. Questo ci permette di cancellare (e chiudere le relative inserzioni eBay) le righe obsolete, quelle la cui quantità è a zero da molto tempo.
 
 
 Qpm permette 3 operazioni:
+
 	1. aggiornamento quantità e prezzi su eBay
 	2. agganciamento e controllo (agganciamento ebay-db, controllo quantità e prezzi)
 	3. eliminazione righe DB e chiusura su eBay ad obsoleti (quelli con qty=0 per 3+ mesi)
 
 
 Colonne del db: 
+
 	- ga_code
 	- itemid
 	- qty: _quantità dal datasource_

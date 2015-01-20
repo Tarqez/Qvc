@@ -416,8 +416,8 @@ def prc_loader():
 
     # get dict of dict from file.csv
     fname = get_fname_in(folder)
-    #prc = prc_datasource(fname)
-    prc = oldDB_prc_datasource(fname)
+    prc = prc_datasource(fname)
+    #prc = oldDB_prc_datasource(fname)
     os.remove(fname)
 
     for ga_code in prc:
@@ -543,6 +543,51 @@ def db_clean():
     s.query(Art).filter(Art.qty == None, Art.itemid == u'').delete()
     s.commit()
 
+def oldDB_notsell_datasource(fcsv):
+    'Yield a dict = {ga_code:V1, notes:V2} from old db csv exportation'
+
+    csv_line = dict()
+
+    with open(fcsv, 'rb') as f:
+        dsource_rows = csv.reader(f, delimiter=',', quotechar='"')
+        #datasource_rows.next()
+        for row in dsource_rows:
+            try:
+                csv_line['ga_code'] = row[0].strip() 
+                csv_line['notes'] = unicode(row[1].strip(), errors='ignore')
+
+                yield csv_line
+
+            except ValueError:
+                print 'rejected line:'
+                print row
+                print sys.exc_info()[0]
+                print sys.exc_info()[1]
+                print sys.exc_info()[2]  
+def oldDB_notsell_update():
+
+    folder = os.path.join(DATA_PATH, 'notsell')
+    fname = get_fname_in(folder)
+
+    for line in oldDB_notsell_datasource(fname):
+        try:
+            art = s.query(Art).filter(Art.ga_code == line['ga_code']).first()
+            if art: # exsits
+                art.extra_qty = -1
+                art.notes = line['notes']
+                s.add(art)
+            else: # not exsist
+                print line['ga_code'], 'no in db'
+                    
+        except ValueError:
+            print 'rejected line:'
+            print line
+            print sys.exc_info()[0]
+            print sys.exc_info()[1]
+            print sys.exc_info()[2]
+
+    os.remove(fname)
+    s.commit()                  
 
 # Utils
 # -----
