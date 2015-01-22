@@ -253,7 +253,20 @@ def set_extra_qty(ga_code, qnty):
         art.extra_qty = qnty
         s.add(art)
         s.commit()
-    else: print 'no ga_code found in DB'    
+    else: print 'no ga_code found in DB'
+
+def set_extra_(ga_code, qty=0, prc=0):
+    'Set extra_qty & extra_prc together'
+
+    s = Session()
+    art = s.query(Art).filter(Art.ga_code == ga_code).first()
+    if art:
+        if qty > 0: art.extra_qty = qty
+        if prc > 0: art.extra_prc = prc
+        s.commit()
+    else: print 'no ga_code found in DB'
+    s.close()
+
 
 
 
