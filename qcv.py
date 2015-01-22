@@ -475,6 +475,21 @@ def revise_prc():
             s.add(art)
         s.commit()
 
+def revise_extra_qp():
+    'Fx revise for both extra_qty & extra_prc'
+    smartheaders=(ACTION, 'ItemID', '*Quantity', '*StartPrice')
+    arts = s.query(Art).filter(Art.itemid != u'', or_(Art.extra_qty>0, Art.extra_prc>0))
+    fout_name = os.path.join(DATA_PATH, fx_fname('revise_extra_qp'))
+    with EbayFx(fout_name, smartheaders) as wrt:
+        for art in arts:
+            fx_revise_row = {ACTION: 'Revise',
+                             'ItemID': art.itemid,
+                             '*Quantity': ebay_qty(art.qty, art.extra_qty),
+                             '*StartPrice': ebay_prc(art.prc, art.extra_prc),}
+            wrt.writerow(fx_revise_row)
+        
+
+
            
 
 # Composed actions
