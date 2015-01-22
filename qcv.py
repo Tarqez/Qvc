@@ -235,25 +235,6 @@ def stats_for(qty):
         print '%-5s %-8s%-8s' % (m, store_stats[m]['itms'], store_stats[m]['pcs'])  
 
 
-def set_extra_prc(ga_code, price)  :
-    'Set extra_price for ga_code'
-
-    art = s.query(Art).filter(Art.ga_code == ga_code).first()
-    if art:
-        art.extra_prc = price
-        s.add(art)
-        s.commit()
-    else: print 'no ga_code found in DB'
-
-def set_extra_qty(ga_code, qnty):
-    'Set extra_qty for ga_code'
-
-    art = s.query(Art).filter(Art.ga_code == ga_code).first()
-    if art:
-        art.extra_qty = qnty
-        s.add(art)
-        s.commit()
-    else: print 'no ga_code found in DB'
 
 def set_extra_(ga_code, qty=0, prc=0):
     'Set extra_qty & extra_prc together'
