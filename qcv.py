@@ -242,8 +242,8 @@ def set_extra_(ga_code, qty=0, prc=0):
     s = Session()
     art = s.query(Art).filter(Art.ga_code == ga_code).first()
     if art:
-        if qty > 0: art.extra_qty = qty
-        if prc > 0: art.extra_prc = prc
+        art.extra_qty = qty
+        art.extra_prc = prc
         s.commit()
     else: print 'no ga_code found in DB'
     s.close()
