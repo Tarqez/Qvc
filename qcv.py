@@ -236,7 +236,7 @@ def stats_for(qty):
 
 
 
-def set_extra_(ga_code, qty=0, prc=0):
+def set_extra_pq(ga_code, qty=0, prc=0):
     'Set extra_qty & extra_prc together'
 
     s = Session()
@@ -248,7 +248,15 @@ def set_extra_(ga_code, qty=0, prc=0):
     else: print 'no ga_code found in DB'
     s.close()
 
+def get_all_pq(ga_code):
+    'Get all prices and quantities for the given item'
 
+    s = Session()
+    art = s.query(Art).filter(Art.ga_code == ga_code).first()
+    if art:
+        print 'extra_qty: %s - qty: %s' % (str(art.extra_qty), str(art.qty))
+        print 'extra_prc: %s - prc: %s' % (str(art.extra_prc), str(art.prc))
+    else: print 'Art not exsists'
 
 
 # Datasources
@@ -612,21 +620,6 @@ def mark():
             s.add(itm)
     s.commit() 
 
-def price_for(ga_code):
-    'Show the prices'
-
-    art = s.query(Art).filter(Art.ga_code == ga_code).first()
-    if art:
-        print str(art.prc), art.extra_prc, ebay_prc(art.prc, art.extra_prc)
-    else: print 'art not exsists'
-
-def read_qty_prc_for(itemid):
-    'Show qty and price for given itemid'
-
-    art = s.query(Art).filter(Art.itemid == itemid).first()
-    if art:
-        print str(art.qty), art.extra_qty, str(art.prc), art.extra_prc
-    else: print 'art not exsists'
 
 def reset_update():
     'Set update_qty & update_prc to False, for all items'
