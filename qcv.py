@@ -379,8 +379,8 @@ def qty_loader():
 
     # add to qty datasource missing zero-qty item
     for i in s.query(Art.ga_code): # for each DB row
-        if not qty.has_key(i[0]): # not in ds
-            qty[i[0]] = {} # add in ds with qty zero
+        if not qty.has_key(i[0]): # not in datasource
+            qty[i[0]] = {} # add in datasource with qty zero
 
     for ga_code in qty:
         try:
@@ -495,6 +495,24 @@ def revise_extra_qp():
                              '*Quantity': ebay_qty(art.qty, art.extra_qty),
                              '*StartPrice': ebay_prc(art.prc, art.extra_prc),}
             wrt.writerow(fx_revise_row)
+
+
+# end
+def end():
+    'Fx end action'
+    smartheaders=(ACTION, 'ItemID', 'EndCode=NotAvailable')
+
+    arts = s.query(Art).filter(Art.itemid != u'')
+    fout_name = os.path.join(DATA_PATH, fx_fname('end'))
+    with EbayFx(fout_name, smartheaders) as wrt:
+        for art in arts:
+            if u'm91' in art.qty:
+                fx_end_row = {ACTION:'End',
+                              'ItemID':art.itemid,}
+                wrt.writerow(fx_end_row)
+                art.itemid = u'' # SET ebay_itemid = u'' 
+                s.add(art)
+        s.commit()  
         
 
 
