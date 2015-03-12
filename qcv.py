@@ -371,7 +371,6 @@ def qty_loader():
     # get dict of dict from file.xls
     fname = get_fname_in(folder)
     qty = qty_datasource(fname)
-    os.remove(fname)
 
     stats_for(qty)
 
@@ -409,6 +408,7 @@ def qty_loader():
             print sys.exc_info()[2]
 
     s.commit()
+    os.remove(fname)
 
 
 def prc_loader():
@@ -420,7 +420,6 @@ def prc_loader():
     fname = get_fname_in(folder)
     prc = prc_datasource(fname)
     #prc = oldDB_prc_datasource(fname)
-    os.remove(fname)
 
     for ga_code in prc:
         try:
@@ -447,6 +446,7 @@ def prc_loader():
             print sys.exc_info()[2]
     
     s.commit()
+    os.remove(fname)
             
 
 # FX csv file creators
