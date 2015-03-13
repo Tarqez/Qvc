@@ -367,17 +367,17 @@ def anagrafica_datasource(fcsv):
     anagrafica_line = dict()
 
     with open(fcsv, 'rb') as f:
-        dsource_rows = csv.reader(f, delimeter=';', quotechar='"')
+        dsource_rows = csv.reader(f, delimiter=';', quotechar='"')
         dsource_rows.next()
-        for row in dsorce_rows:
+        for row in dsource_rows:
             try:
-                anagrafica_line['ga_code']=dsource_row[0]
-                anagrafica_line['brand']=' '.join(dsource_row[4].split()[1:]).title()
-                anagrafica_line['mnf_code']=dsource_row[6]
-                anagrafica_line['descr']=dsource_row[2].decode('iso.8859-1')
-                anagrafica_line['categ']=' '.join(dsource_row[5].split()[1:])
-                anagrafica_line['sale_unit']=dsource_row[3].split().pop(0)
-                anagrafica_line['sale_min']=int(float((dsource_row[7].strip() or '0,0').replace('.', '').replace(',', '.')))
+                anagrafica_line['ga_code']=row[0]
+                anagrafica_line['brand']=' '.join(row[4].split()[1:]).title()
+                anagrafica_line['mnf_code']=row[6]
+                anagrafica_line['descr']=row[2].decode('iso.8859-1')
+                anagrafica_line['categ']=' '.join(row[5].split()[1:])
+                anagrafica_line['sale_unit']=row[3].split().pop(0)
+                anagrafica_line['sale_min']=int(float((row[7].strip() or '0,0').replace('.', '').replace(',', '.')))
 
                 yield anagrafica_line
 
@@ -594,14 +594,19 @@ def end():
 def gacodes_for_anagrafica():
     'Create csv of gacodes for Anagrafica capturing'
 
+    global s
+    s = Session()
     arts = s.query(Art).filter(Art.itemid == u'', Art.prc != '')
     fout_name = os.path.join(DATA_PATH, fx_fname('gacodes'))
     with open(fout_name, 'wb') as csvf:
         wrt = csv.writer(csvf)
         for art in arts:
-            if art.prc['b'] > 50.0:
-                wrt.writerow([art.ga_code])
+            if not s.query(Anagrafica).filter(Anagrafica.ga_code == art.ga_code).first(): # not exsist anagrafica
+                if max(art.prc.values()) >= 40.0 and 'm96' in art.qty:
+                    wrt.writerow([art.ga_code])
+    s.close()
 
+gaf = gacodes_for_anagrafica
 
            
 
@@ -711,9 +716,10 @@ def oldDB_notsell_update():
     os.remove(fname)
     s.commit()                  
 
+
+
 # Utils
 # -----
-
 
 def mark():
     'Set extra_qty = -1 for low price rows'
