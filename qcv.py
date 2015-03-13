@@ -361,6 +361,33 @@ def ebay_report_datasource(fcsv):
                 print sys.exc_info()[1]
                 print sys.exc_info()[2]
 
+def anagrafica_datasource(fcsv):
+    'Yield a dict of values'
+
+    anagrafica_line = dict()
+
+    with open(fcsv, 'rb') as f:
+    dsource_rows = csv.reader(f, delimeter=';', quotechar='"')
+    dsource_rows.next()
+    for row in dsorce_rows:
+        try:
+            anagrafica_line['ga_code']=dsource_row[0]
+            anagrafica_line['brand']=' '.join(dsource_row[4].split()[1:]).title()
+            anagrafica_line['mnf_code']=dsource_row[6]
+            anagrafica_line['descr']=dsource_row[2].decode('iso.8859-1')
+            anagrafica_line['categ']=' '.join(dsource_row[5].split()[1:])
+            anagrafica_line['sale_unit']=dsource_row[3].split().pop(0)
+            anagrafica_line['sale_min']=int(float((dsource_row[7].strip() or '0,0').replace('.', '').replace(',', '.')))
+
+            yield anagrafica_line
+
+        except ValueError:
+            print 'rejected line:'
+            print row
+            print sys.exc_info()[0]
+            print sys.exc_info()[1]
+            print sys.exc_info()[2]            
+
 
 
 
@@ -459,6 +486,40 @@ def prc_loader():
     
     s.commit()
     os.remove(fname)
+
+def anagrafica_loader():
+    "Load ('ga_code', 'brand', 'mnf_code', 'descr', 'categ', 'sale_unit', 'sale_min') into DB"
+
+    folder = os.path.join(DATA_PATH, 'anagrafica')
+
+    # get datasource
+    fname = get_fname_in(folder)
+
+    for anagrafica_line in anagrafica_datasource(fname):
+        try:
+            anagrafica_art = s.query(Anagrafica).filter(Anagrafica.ga_code == anagrafica_line['ga_code']).first()
+            if not anagrafica_art: anagrafica_art = Anagrafica()
+
+            anagrafica_art.ga_code = anagrafica_line['ga_code']
+            anagrafica_art.brand = anagrafica_line['brand']
+            anagrafica_art.mnf_code = anagrafica_line['mnf_code']
+            anagrafica_art.descr = anagrafica_line['descr']
+            anagrafica_art.categ = anagrafica_line['categ']
+            anagrafica_art.sale_unit = anagrafica_line['sale_unit']
+            anagrafica_art.sale_min = anagrafica_line['sale_min'] 
+
+            s.add(anagrafica_art)
+
+        except ValueError:
+            print 'rejected line:'
+            print anagrafica_line
+            print sys.exc_info()[0]
+            print sys.exc_info()[1]
+            print sys.exc_info()[2]  
+
+    s.commit()
+    os.remove(fname)                      
+
             
 
 # FX csv file creators
