@@ -367,27 +367,26 @@ def anagrafica_datasource(fcsv):
     anagrafica_line = dict()
 
     with open(fcsv, 'rb') as f:
-    dsource_rows = csv.reader(f, delimeter=';', quotechar='"')
-    dsource_rows.next()
-    for row in dsorce_rows:
-        try:
-            anagrafica_line['ga_code']=dsource_row[0]
-            anagrafica_line['brand']=' '.join(dsource_row[4].split()[1:]).title()
-            anagrafica_line['mnf_code']=dsource_row[6]
-            anagrafica_line['descr']=dsource_row[2].decode('iso.8859-1')
-            anagrafica_line['categ']=' '.join(dsource_row[5].split()[1:])
-            anagrafica_line['sale_unit']=dsource_row[3].split().pop(0)
-            anagrafica_line['sale_min']=int(float((dsource_row[7].strip() or '0,0').replace('.', '').replace(',', '.')))
+        dsource_rows = csv.reader(f, delimeter=';', quotechar='"')
+        dsource_rows.next()
+        for row in dsorce_rows:
+            try:
+                anagrafica_line['ga_code']=dsource_row[0]
+                anagrafica_line['brand']=' '.join(dsource_row[4].split()[1:]).title()
+                anagrafica_line['mnf_code']=dsource_row[6]
+                anagrafica_line['descr']=dsource_row[2].decode('iso.8859-1')
+                anagrafica_line['categ']=' '.join(dsource_row[5].split()[1:])
+                anagrafica_line['sale_unit']=dsource_row[3].split().pop(0)
+                anagrafica_line['sale_min']=int(float((dsource_row[7].strip() or '0,0').replace('.', '').replace(',', '.')))
 
-            yield anagrafica_line
+                yield anagrafica_line
 
-        except ValueError:
-            print 'rejected line:'
-            print row
-            print sys.exc_info()[0]
-            print sys.exc_info()[1]
-            print sys.exc_info()[2]            
-
+            except ValueError:
+                print 'rejected line:'
+                print row
+                print sys.exc_info()[0]
+                print sys.exc_info()[1]
+                print sys.exc_info()[2]            
 
 
 
@@ -587,6 +586,21 @@ def end():
                 s.add(art)
         s.commit()  
         
+
+
+# ga_code csv for AS capturing
+# ----------------------------
+
+def gacodes_for_anagrafica():
+    'Create csv of gacodes for Anagrafica capturing'
+
+    arts = s.query(Art).filter(Art.itemid == u'', Art.prc != '')
+    fout_name = os.path.join(DATA_PATH, fx_fname('gacodes'))
+    with open(fout_name, 'wb') as csvf:
+        wrt = csv.writer(csvf)
+        for art in arts:
+            if art.prc['b'] > 50.0:
+                wrt.writerow([art.ga_code])
 
 
            
