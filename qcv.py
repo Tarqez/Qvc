@@ -34,6 +34,18 @@ class Art(Base):
     update_prc = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)    
 
+class Anagrafica(Base):
+    __tablename__ = 'anagrafica'
+
+    id = Column(Integer, primary_key=True)
+    ga_code = Column(Unicode, unique=True, index=True, nullable=False)
+    brand = Column(Unicode, default=u'')    
+    mnf_code = Column(Unicode, default=u'')
+    descr = Column(Unicode, default=u'')
+    categ = Column(Unicode, default=u'')
+    sale_unit = Column(Unicode, default=u'')
+    sale_min = Column(Integer, default=1)    
+
 class Sequence(Base):
     __tablename__ = 'sequences'
 
