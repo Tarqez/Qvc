@@ -78,6 +78,11 @@ class EbayFx(csv.DictWriter):
 
 DATA_PATH = os.path.join('data')
 ACTION = '*Action(SiteID=Italy|Country=IT|Currency=EUR|Version=745|CC=UTF-8)' # smartheaders CONST
+FTPURL = 'garofoli.ftpimg.eu'
+PICURL = 'PicURL=http://'+FTPURL+'/nopic.jpg' # smartheaders CONST
+EMAIL = 'info.garofoli@gmail.com'
+PHONE = '0835/385078'
+INVOICE_FORM_URL = 'http://garofoli.ftpimg.eu/invoice_form'
 
 
 # Fruitful functions
@@ -118,7 +123,8 @@ def ebay_qty(qties, extra_q = 0):
                        'm95':'closing',
                        'm97':'closing',
                        'm9a':'small and highly unreliable',
-                       'mgt':'small and particular'}
+                       'mgt':'small and particular',
+                       'm91': 'unreliable goods'}
     q = 0
     if extra_q > 0:
         q = extra_q
@@ -139,11 +145,16 @@ def ebay_prc(prcs, extra_p = 0):
         p = extra_p
     else:
         if prcs != None:
+            # 50€ line - the min price >= 50.0€
+            for pr in sorted(prcs.values()):
+                if pr >= 50.0: 
+                    p = pr
+                    break
             # B line price (all prices >= 0)
-            if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
-            if prcs['b'] < 30: p = prcs['b']
-            elif prcs['b'] < 50: p = prcs['b'] + 2.44
-            else: p = prcs['b']            
+            #if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
+            #if prcs['b'] < 30: p = prcs['b']
+            #elif prcs['b'] < 50: p = prcs['b'] + 2.44
+            #else: p = prcs['b']            
     return p         
 
 
@@ -158,6 +169,50 @@ def fx_fname(action_name):
     s.commit()
     
     return action_name+'_'+str(seq.number).zfill(4)+'.csv'
+
+
+def items_with_img():
+    'Return gacodes list for items with an img on FTP server'
+
+    from ftplib import FTP
+    ftp = FTP(FTPURL)
+    ftp.login('garofoli@ftpimg.eu', 'KGbA7ZmAq$&9')
+
+    def is_correct_img_fname(fn):
+        'True if img filename is <ddddddd>.jpg d is a digit'
+        name, ext = os.path.splitext(fn)
+        try:
+            if len(name) != 7: raise
+            int(name)
+            return True
+        except:
+            return False
+
+    # ga_codes list for all images on FTP server
+    return [el[:-4] for el in ftp.nlst() if is_correct_img_fname(el)]   
+
+def ebay_title(brand, description, mnf_code):
+    'Return cleaned *Title composed by func parameters'
+    mnf_code = mnf_code+' -'
+    max_desc_len = 80 - len(brand) - len(mnf_code) -2
+    title = ' '.join((brand, mnf_code, description[:max_desc_len]))
+    title = title.replace('<', '').replace('>', '').replace('&', '').replace('"', '')
+    return title   
+
+def ebay_template(tpl_name, context):
+    'Return one line html ebay templated for description field'
+    try:
+        template_loader = jinja2.FileSystemLoader(
+            searchpath=os.path.join(os.getcwd(), 'templates', tpl_name))
+        template_env = jinja2.Environment(loader=template_loader)
+
+        template = template_env.get_template('index.htm')
+        output = template.render(context)
+        res = ' '.join(output.split()).encode('iso-8859-1')
+        return res
+    except:
+        print sys.exc_info()[0]
+        print sys.exc_info()[1]       
 
 
 # Void functions
@@ -585,7 +640,71 @@ def end():
                 art.itemid = u'' # SET ebay_itemid = u'' 
                 s.add(art)
         s.commit()  
-        
+
+
+# add
+def add(session):
+    'Fx add action'
+    smartheaders = (ACTION,
+                    '*Category=50584',
+                    '*Title',
+                    'Description',
+                    PICURL,
+                    '*Quantity',
+                    '*StartPrice',
+                    'StoreCategory=1',
+                    'CustomLabel',
+                    '*ConditionID=1000',
+                    '*Format=StoresFixedPrice',
+                    '*Duration=GTC',
+                    'OutOfStockControl=true',
+                    '*Location=Matera',
+                    'VATPercent=22',
+                    '*ReturnsAcceptedOption=ReturnsAccepted',
+                    'ReturnsWithinOption=Days_30',
+                    'ShippingCostPaidByOption=Buyer',                    
+                    # Regole di vendita
+                    'PaymentProfileName=PayPal-Bonifico',
+                    'ReturnProfileName=Reso1',
+                    'ShippingProfileName=GLS_paid',
+                    # specifiche oggetto
+                    'C:Marca',
+                    'C:Modello',
+                    'C:Genere',
+                    'Counter=BasicStyle',)
+    
+    arts = session.query(Art).filter(Art.itemid == u'', Art.extra_qty >= 0)
+
+    fout_name = os.path.join(DATA_PATH, 'fx_output', fx_fname('add'))
+    gacodes_of_images = items_with_img()
+    with EbayFx(fout_name, smartheaders) as wrt:
+        for art in arts:
+            if ebay_prc(art.prc, art.extra_prc) >= 50.0 and ebay_qty(art.qty, art.extra_qty) > 0:
+                art_a = s.query(Anagrafica).filter(Anagrafica.ga_code == art.ga_code).first()
+                if art_a.sale_unit == 'PZ' and art_a.sale_min <= 1:
+                    title = ebay_title(art_a.brand, art_a.descr, art_a.mnf_code)
+                    context = {'ga_code':art.ga_code,
+                               'title':title,
+                               'description':'',
+                               'email':EMAIL,
+                               'phone':PHONE,
+                               'invoice_form_url':INVOICE_FORM_URL,}
+                    ebay_description = ebay_template('garofoli', context)
+                    fx_add_row = {ACTION:'Add',
+                                  '*Title':title.encode('iso-8859-1'),
+                                  'Description':ebay_description,
+                                  '*Quantity':art.ebay_qty,
+                                  '*StartPrice':art.ebay_price,
+                                  'ShippingProfileName=GLS_paid':'',
+                                  'CustomLabel':art.ga_code,
+                                  PICURL:'http://'+FTPURL+'/'+art.ga_code+'.jpg' if art.ga_code in gacodes_of_images else '',
+                                  'StoreCategory=1':store_cat_n(art.category, session),
+                                  '*Category=50584':ebay_cat_n(art.category, session),
+                                  'C:Marca':art.brand,
+                                  'C:Modello':art.mnf_code,
+                                  'C:Genere':art.category}
+                    wrt.writerow(fx_add_row)        
+            
 
 
 # ga_code csv for AS capturing
