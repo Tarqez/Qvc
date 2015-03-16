@@ -696,7 +696,7 @@ def add():
     fout_name = os.path.join(DATA_PATH, fx_fname('add'))
     gacodes_of_images = items_with_img()
     with EbayFx(fout_name, smartheaders) as wrt:
-        for art in arts[:30]:
+        for art in arts:
             if ebay_prc(art.prc, art.extra_prc) >= 50.0 and ebay_qty(art.qty, art.extra_qty) > 0:
                 art_a = s.query(Anagrafica).filter(Anagrafica.ga_code == art.ga_code).first()
                 if art_a:
@@ -710,7 +710,7 @@ def add():
                                    'phone':PHONE,
                                    'invoice_form_url':INVOICE_FORM_URL,}
                         ebay_description = ebay_template('garofoli', context)
-                        fx_add_row = {ACTION:'VerifyAdd',
+                        fx_add_row = {ACTION:'Add',
                                       '*Title':title.encode('iso-8859-1'),
                                       'Description':ebay_description,
                                       '*Quantity':ebay_qty(art.qty, art.extra_qty),
