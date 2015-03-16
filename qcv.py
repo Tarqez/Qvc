@@ -134,8 +134,6 @@ def ebay_qty(qties, extra_q = 0):
                        'mgt':'small and particular',
                        'm91': 'unreliable goods',
                        'm99': 'closing'}
-
->>>>>>> anagrafica
     q = 0
     if extra_q > 0:
         q = extra_q
