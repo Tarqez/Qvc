@@ -106,7 +106,8 @@ def ebay_qty(qties, extra_q = 0):
                        'm95':'closing',
                        'm97':'closing',
                        'm9a':'small and highly unreliable',
-                       'mgt':'small and particular'}
+                       'mgt':'small and particular',
+                       'm99':'closing'}
     q = 0
     if extra_q > 0:
         q = extra_q
