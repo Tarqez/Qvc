@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import sys, csv, os, xlrd, zipfile, datetime
+import sys, csv, os, xlrd, zipfile, datetime, jinja2
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -51,7 +51,7 @@ class Categ(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(Unicode, unique=True, index=True, nullable=False)
-    store_n = Column(Unicode, nullable=False)
+    store_n = Column(Unicode, default = u'')
     ebay_n = Column(Unicode, default = u'')    
 
 class Sequence(Base):
@@ -228,7 +228,7 @@ def get_cat(name):
     'Return obj of Categories num from db'
 
     categ = s.query(Categ).filter(Categ.name == name.lower()).first()
-    if not categ: return ''
+    if not categ: return Categ()
     return categ   
 
 
@@ -660,7 +660,7 @@ def end():
 
 
 # add
-def add(session):
+def add():
     'Fx add action'
     smartheaders = (ACTION,
                     '*Category=50584',
@@ -691,38 +691,40 @@ def add(session):
                     'C:Genere',
                     'Counter=BasicStyle',)
     
-    arts = session.query(Art).filter(Art.itemid == u'', Art.extra_qty >= 0)
+    arts = s.query(Art).filter(Art.itemid == u'', Art.extra_qty >= 0)
 
-    fout_name = os.path.join(DATA_PATH, 'fx_output', fx_fname('add'))
+    fout_name = os.path.join(DATA_PATH, fx_fname('add'))
     gacodes_of_images = items_with_img()
     with EbayFx(fout_name, smartheaders) as wrt:
-        for art in arts:
+        for art in arts[:30]:
             if ebay_prc(art.prc, art.extra_prc) >= 50.0 and ebay_qty(art.qty, art.extra_qty) > 0:
                 art_a = s.query(Anagrafica).filter(Anagrafica.ga_code == art.ga_code).first()
-                if art_a.sale_unit == 'PZ' and art_a.sale_min <= 1:
-                    title = ebay_title(art_a.brand, art_a.descr, art_a.mnf_code)
-                    context = {'ga_code':art.ga_code,
-                               'title':title,
-                               'description':'',
-                               'email':EMAIL,
-                               'phone':PHONE,
-                               'invoice_form_url':INVOICE_FORM_URL,}
-                    ebay_description = ebay_template('garofoli', context)
-                    fx_add_row = {ACTION:'Add',
-                                  '*Title':title.encode('iso-8859-1'),
-                                  'Description':ebay_description,
-                                  '*Quantity':ebay_qty(art.qty, art.extra_qty),
-                                  '*StartPrice':ebay_prc(art.prc, art.extra_prc),
-                                  'BestOfferEnabled=1': 0 if ebay_prc(art.prc, art.extra_prc) >= 60.0 else '',
-                                  'ShippingProfileName=GLS_free':'',
-                                  'CustomLabel':art.ga_code,
-                                  PICURL:'http://'+FTPURL+'/'+art.ga_code+'.jpg' if art.ga_code in gacodes_of_images else '',
-                                  'StoreCategory=1':get_cat(art_a.categ).store_n,
-                                  '*Category=50584':get_cat(art_a.categ).ebay_n,
-                                  'C:Marca':art_a.brand,
-                                  'C:Modello':art_a.mnf_code,
-                                  'C:Genere':art_a.categ}
-                    wrt.writerow(fx_add_row)        
+                if art_a:
+                    if art_a.sale_unit == 'PZ' and art_a.sale_min <= 1:
+                        categ = get_cat(art_a.categ)
+                        title = ebay_title(art_a.brand, art_a.descr, art_a.mnf_code)
+                        context = {'ga_code':art.ga_code,
+                                   'title':title,
+                                   'description':'',
+                                   'email':EMAIL,
+                                   'phone':PHONE,
+                                   'invoice_form_url':INVOICE_FORM_URL,}
+                        ebay_description = ebay_template('garofoli', context)
+                        fx_add_row = {ACTION:'VerifyAdd',
+                                      '*Title':title.encode('iso-8859-1'),
+                                      'Description':ebay_description,
+                                      '*Quantity':ebay_qty(art.qty, art.extra_qty),
+                                      '*StartPrice':ebay_prc(art.prc, art.extra_prc),
+                                      'BestOfferEnabled=1': '' if ebay_prc(art.prc, art.extra_prc) >= 60.0 else 0,
+                                      'CustomLabel':art.ga_code,
+                                      PICURL:'http://'+FTPURL+'/'+art.ga_code+'.jpg' if art.ga_code in gacodes_of_images else '',
+                                      'StoreCategory=1':categ.store_n,
+                                      '*Category=50584':categ.ebay_n,
+                                      'C:Marca':art_a.brand,
+                                      'C:Modello':art_a.mnf_code,
+                                      'C:Genere':art_a.categ}
+                        wrt.writerow(fx_add_row) 
+                else: print 'no anagrafica per', art.ga_code       
             
 
 
