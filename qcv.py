@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import sys, csv, os, xlrd, zipfile, datetime
+import sys, csv, os, xlrd, zipfile, datetime, jinja2
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -34,6 +34,26 @@ class Art(Base):
     update_prc = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)    
 
+class Anagrafica(Base):
+    __tablename__ = 'anagrafica'
+
+    id = Column(Integer, primary_key=True)
+    ga_code = Column(Unicode, unique=True, index=True, nullable=False)
+    brand = Column(Unicode, default=u'')    
+    mnf_code = Column(Unicode, default=u'')
+    descr = Column(Unicode, default=u'')
+    categ = Column(Unicode, default=u'')
+    sale_unit = Column(Unicode, default=u'')
+    sale_min = Column(Integer, default=1)    
+
+class Categ(Base):
+    __tablename__ = 'categ'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(Unicode, unique=True, index=True, nullable=False)
+    store_n = Column(Unicode, default = u'')
+    ebay_n = Column(Unicode, default = u'')    
+
 class Sequence(Base):
     __tablename__ = 'sequences'
 
@@ -66,6 +86,11 @@ class EbayFx(csv.DictWriter):
 
 DATA_PATH = os.path.join('data')
 ACTION = '*Action(SiteID=Italy|Country=IT|Currency=EUR|Version=745|CC=UTF-8)' # smartheaders CONST
+FTPURL = 'garofoli.ftpimg.eu'
+PICURL = 'PicURL=http://'+FTPURL+'/nopic.jpg' # smartheaders CONST
+EMAIL = 'info.garofoli@gmail.com'
+PHONE = '0835/385078'
+INVOICE_FORM_URL = 'http://garofoli.ftpimg.eu/invoice_form'
 
 
 # Fruitful functions
@@ -107,7 +132,10 @@ def ebay_qty(qties, extra_q = 0):
                        'm97':'closing',
                        'm9a':'small and highly unreliable',
                        'mgt':'small and particular',
-                       'm99':'closing'}
+                       'm91': 'unreliable goods',
+                       'm99': 'closing'}
+
+>>>>>>> anagrafica
     q = 0
     if extra_q > 0:
         q = extra_q
@@ -128,11 +156,16 @@ def ebay_prc(prcs, extra_p = 0):
         p = extra_p
     else:
         if prcs != None:
+            # 50€ line - the min price >= 50.0€
+            for pr in sorted(prcs.values()):
+                if pr >= 50.0: 
+                    p = pr
+                    break
             # B line price (all prices >= 0)
-            if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
-            if prcs['b'] < 30: p = prcs['b']
-            elif prcs['b'] < 50: p = prcs['b'] + 2.44
-            else: p = prcs['b']            
+            #if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
+            #if prcs['b'] < 30: p = prcs['b']
+            #elif prcs['b'] < 50: p = prcs['b'] + 2.44
+            #else: p = prcs['b']            
     return p         
 
 
@@ -147,6 +180,58 @@ def fx_fname(action_name):
     s.commit()
     
     return action_name+'_'+str(seq.number).zfill(4)+'.csv'
+
+
+def items_with_img():
+    'Return gacodes list for items with an img on FTP server'
+
+    from ftplib import FTP
+    ftp = FTP(FTPURL)
+    ftp.login('garofoli@ftpimg.eu', 'KGbA7ZmAq$&9')
+
+    def is_correct_img_fname(fn):
+        'True if img filename is <ddddddd>.jpg d is a digit'
+        name, ext = os.path.splitext(fn)
+        try:
+            if len(name) != 7: raise
+            int(name)
+            return True
+        except:
+            return False
+
+    # ga_codes list for all images on FTP server
+    return [el[:-4] for el in ftp.nlst() if is_correct_img_fname(el)]   
+
+def ebay_title(brand, description, mnf_code):
+    'Return cleaned *Title composed by func parameters'
+    mnf_code = mnf_code+' -'
+    max_desc_len = 80 - len(brand) - len(mnf_code) -2
+    title = ' '.join((brand, mnf_code, description[:max_desc_len]))
+    title = title.replace('<', '').replace('>', '').replace('&', '').replace('"', '')
+    return title   
+
+def ebay_template(tpl_name, context):
+    'Return one line html ebay templated for description field'
+    try:
+        template_loader = jinja2.FileSystemLoader(
+            searchpath=os.path.join(os.getcwd(), 'templates', tpl_name))
+        template_env = jinja2.Environment(loader=template_loader)
+
+        template = template_env.get_template('index.htm')
+        output = template.render(context)
+        res = ' '.join(output.split()).encode('iso-8859-1')
+        return res
+    except:
+        print sys.exc_info()[0]
+        print sys.exc_info()[1]    
+
+
+def get_cat(name):
+    'Return obj of Categories num from db'
+
+    categ = s.query(Categ).filter(Categ.name == name.lower()).first()
+    if not categ: return Categ()
+    return categ   
 
 
 # Void functions
@@ -350,6 +435,32 @@ def ebay_report_datasource(fcsv):
                 print sys.exc_info()[1]
                 print sys.exc_info()[2]
 
+def anagrafica_datasource(fcsv):
+    'Yield a dict of values'
+
+    anagrafica_line = dict()
+
+    with open(fcsv, 'rb') as f:
+        dsource_rows = csv.reader(f, delimiter=';', quotechar='"')
+        dsource_rows.next()
+        for row in dsource_rows:
+            try:
+                anagrafica_line['ga_code']=row[0]
+                anagrafica_line['brand']=' '.join(row[4].split()[1:]).title()
+                anagrafica_line['mnf_code']=row[6]
+                anagrafica_line['descr']=row[2].decode('iso.8859-1')
+                anagrafica_line['categ']=' '.join(row[5].split()[1:])
+                anagrafica_line['sale_unit']=row[3].split().pop(0)
+                anagrafica_line['sale_min']=int(float((row[7].strip() or '0,0').replace('.', '').replace(',', '.')))
+
+                yield anagrafica_line
+
+            except ValueError:
+                print 'rejected line:'
+                print row
+                print sys.exc_info()[0]
+                print sys.exc_info()[1]
+                print sys.exc_info()[2]            
 
 
 
@@ -448,6 +559,40 @@ def prc_loader():
     
     s.commit()
     os.remove(fname)
+
+def anagrafica_loader():
+    "Load ('ga_code', 'brand', 'mnf_code', 'descr', 'categ', 'sale_unit', 'sale_min') into DB"
+
+    folder = os.path.join(DATA_PATH, 'anagrafica')
+
+    # get datasource
+    fname = get_fname_in(folder)
+
+    for anagrafica_line in anagrafica_datasource(fname):
+        try:
+            anagrafica_art = s.query(Anagrafica).filter(Anagrafica.ga_code == anagrafica_line['ga_code']).first()
+            if not anagrafica_art: anagrafica_art = Anagrafica()
+
+            anagrafica_art.ga_code = anagrafica_line['ga_code']
+            anagrafica_art.brand = anagrafica_line['brand']
+            anagrafica_art.mnf_code = anagrafica_line['mnf_code']
+            anagrafica_art.descr = anagrafica_line['descr']
+            anagrafica_art.categ = anagrafica_line['categ']
+            anagrafica_art.sale_unit = anagrafica_line['sale_unit']
+            anagrafica_art.sale_min = anagrafica_line['sale_min'] 
+
+            s.add(anagrafica_art)
+
+        except ValueError:
+            print 'rejected line:'
+            print anagrafica_line
+            print sys.exc_info()[0]
+            print sys.exc_info()[1]
+            print sys.exc_info()[2]  
+
+    s.commit()
+    os.remove(fname)                      
+
             
 
 # FX csv file creators
@@ -514,8 +659,96 @@ def end():
                 art.itemid = u'' # SET ebay_itemid = u'' 
                 s.add(art)
         s.commit()  
-        
 
+
+# add
+def add():
+    'Fx add action'
+    smartheaders = (ACTION,
+                    '*Category=50584',
+                    '*Title',
+                    'Description',
+                    PICURL,
+                    '*Quantity',
+                    '*StartPrice',
+                    'StoreCategory=1',
+                    'CustomLabel',
+                    '*ConditionID=1000',
+                    '*Format=StoresFixedPrice',
+                    '*Duration=GTC',
+                    'OutOfStockControl=true',
+                    'BestOfferEnabled=1',
+                    '*Location=Matera',
+                    'VATPercent=22',
+                    '*ReturnsAcceptedOption=ReturnsAccepted',
+                    'ReturnsWithinOption=Days_30',
+                    'ShippingCostPaidByOption=Buyer',                    
+                    # Regole di vendita
+                    'PaymentProfileName=PayPal-Bonifico',
+                    'ReturnProfileName=Reso1',
+                    'ShippingProfileName=GLS_free',
+                    # specifiche oggetto
+                    'C:Marca',
+                    'C:Modello',
+                    'C:Genere',
+                    'Counter=BasicStyle',)
+    
+    arts = s.query(Art).filter(Art.itemid == u'', Art.extra_qty >= 0)
+
+    fout_name = os.path.join(DATA_PATH, fx_fname('add'))
+    gacodes_of_images = items_with_img()
+    with EbayFx(fout_name, smartheaders) as wrt:
+        for art in arts[:30]:
+            if ebay_prc(art.prc, art.extra_prc) >= 50.0 and ebay_qty(art.qty, art.extra_qty) > 0:
+                art_a = s.query(Anagrafica).filter(Anagrafica.ga_code == art.ga_code).first()
+                if art_a:
+                    if art_a.sale_unit == 'PZ' and art_a.sale_min <= 1:
+                        categ = get_cat(art_a.categ)
+                        title = ebay_title(art_a.brand, art_a.descr, art_a.mnf_code)
+                        context = {'ga_code':art.ga_code,
+                                   'title':title,
+                                   'description':'',
+                                   'email':EMAIL,
+                                   'phone':PHONE,
+                                   'invoice_form_url':INVOICE_FORM_URL,}
+                        ebay_description = ebay_template('garofoli', context)
+                        fx_add_row = {ACTION:'VerifyAdd',
+                                      '*Title':title.encode('iso-8859-1'),
+                                      'Description':ebay_description,
+                                      '*Quantity':ebay_qty(art.qty, art.extra_qty),
+                                      '*StartPrice':ebay_prc(art.prc, art.extra_prc),
+                                      'BestOfferEnabled=1': '' if ebay_prc(art.prc, art.extra_prc) >= 60.0 else 0,
+                                      'CustomLabel':art.ga_code,
+                                      PICURL:'http://'+FTPURL+'/'+art.ga_code+'.jpg' if art.ga_code in gacodes_of_images else '',
+                                      'StoreCategory=1':categ.store_n,
+                                      '*Category=50584':categ.ebay_n,
+                                      'C:Marca':art_a.brand,
+                                      'C:Modello':art_a.mnf_code,
+                                      'C:Genere':art_a.categ}
+                        wrt.writerow(fx_add_row) 
+                else: print 'no anagrafica per', art.ga_code       
+            
+
+
+# ga_code csv for AS capturing
+# ----------------------------
+
+def gacodes_for_anagrafica():
+    'Create csv of gacodes for Anagrafica capturing'
+
+    global s
+    s = Session()
+    arts = s.query(Art).filter(Art.itemid == u'', Art.prc != '')
+    fout_name = os.path.join(DATA_PATH, fx_fname('gacodes'))
+    with open(fout_name, 'wb') as csvf:
+        wrt = csv.writer(csvf)
+        for art in arts:
+            if not s.query(Anagrafica).filter(Anagrafica.ga_code == art.ga_code).first(): # not exsist anagrafica
+                if max(art.prc.values()) >= 40.0 and 'm96' in art.qty:
+                    wrt.writerow([art.ga_code])
+    s.close()
+
+gaf = gacodes_for_anagrafica
 
            
 
@@ -625,9 +858,10 @@ def oldDB_notsell_update():
     os.remove(fname)
     s.commit()                  
 
+
+
 # Utils
 # -----
-
 
 def mark():
     'Set extra_qty = -1 for low price rows'
