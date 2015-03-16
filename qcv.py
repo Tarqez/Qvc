@@ -46,6 +46,14 @@ class Anagrafica(Base):
     sale_unit = Column(Unicode, default=u'')
     sale_min = Column(Integer, default=1)    
 
+class Categ(Base):
+    __tablename__ = 'categ'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(Unicode, unique=True, index=True, nullable=False)
+    store_n = Column(Unicode, nullable=False)
+    ebay_n = Column(Unicode, default = u'')    
+
 class Sequence(Base):
     __tablename__ = 'sequences'
 
@@ -124,7 +132,8 @@ def ebay_qty(qties, extra_q = 0):
                        'm97':'closing',
                        'm9a':'small and highly unreliable',
                        'mgt':'small and particular',
-                       'm91': 'unreliable goods'}
+                       'm91': 'unreliable goods',
+                       'm99': 'closing'}
     q = 0
     if extra_q > 0:
         q = extra_q
@@ -212,7 +221,15 @@ def ebay_template(tpl_name, context):
         return res
     except:
         print sys.exc_info()[0]
-        print sys.exc_info()[1]       
+        print sys.exc_info()[1]    
+
+
+def get_cat(name):
+    'Return obj of Categories num from db'
+
+    categ = s.query(Categ).filter(Categ.name == name.lower()).first()
+    if not categ: return ''
+    return categ   
 
 
 # Void functions
@@ -658,6 +675,7 @@ def add(session):
                     '*Format=StoresFixedPrice',
                     '*Duration=GTC',
                     'OutOfStockControl=true',
+                    'BestOfferEnabled=1',
                     '*Location=Matera',
                     'VATPercent=22',
                     '*ReturnsAcceptedOption=ReturnsAccepted',
@@ -666,7 +684,7 @@ def add(session):
                     # Regole di vendita
                     'PaymentProfileName=PayPal-Bonifico',
                     'ReturnProfileName=Reso1',
-                    'ShippingProfileName=GLS_paid',
+                    'ShippingProfileName=GLS_free',
                     # specifiche oggetto
                     'C:Marca',
                     'C:Modello',
@@ -693,16 +711,17 @@ def add(session):
                     fx_add_row = {ACTION:'Add',
                                   '*Title':title.encode('iso-8859-1'),
                                   'Description':ebay_description,
-                                  '*Quantity':art.ebay_qty,
-                                  '*StartPrice':art.ebay_price,
-                                  'ShippingProfileName=GLS_paid':'',
+                                  '*Quantity':ebay_qty(art.qty, art.extra_qty),
+                                  '*StartPrice':ebay_prc(art.prc, art.extra_prc),
+                                  'BestOfferEnabled=1': 0 if ebay_prc(art.prc, art.extra_prc) >= 60.0 else '',
+                                  'ShippingProfileName=GLS_free':'',
                                   'CustomLabel':art.ga_code,
                                   PICURL:'http://'+FTPURL+'/'+art.ga_code+'.jpg' if art.ga_code in gacodes_of_images else '',
-                                  'StoreCategory=1':store_cat_n(art.category, session),
-                                  '*Category=50584':ebay_cat_n(art.category, session),
-                                  'C:Marca':art.brand,
-                                  'C:Modello':art.mnf_code,
-                                  'C:Genere':art.category}
+                                  'StoreCategory=1':get_cat(art_a.categ).store_n,
+                                  '*Category=50584':get_cat(art_a.categ).ebay_n,
+                                  'C:Marca':art_a.brand,
+                                  'C:Modello':art_a.mnf_code,
+                                  'C:Genere':art_a.categ}
                     wrt.writerow(fx_add_row)        
             
 
