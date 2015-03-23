@@ -728,21 +728,21 @@ def add():
             
 
 
-# ga_code csv for AS capturing
-# ----------------------------
+# Getting gacodes for AS data capturing
+# -------------------------------------
 
 def gacodes_for_anagrafica():
     'Create csv of gacodes for Anagrafica capturing'
 
     global s
     s = Session()
-    arts = s.query(Art).filter(Art.itemid == u'', Art.prc != '')
+    arts = s.query(Art).filter(Art.itemid != u'')
     fout_name = os.path.join(DATA_PATH, fx_fname('gacodes'))
     with open(fout_name, 'wb') as csvf:
         wrt = csv.writer(csvf)
         for art in arts:
             if not s.query(Anagrafica).filter(Anagrafica.ga_code == art.ga_code).first(): # not exsist anagrafica
-                if max(art.prc.values()) >= 40.0 and 'm96' in art.qty:
+                #if max(art.prc.values()) >= 40.0 and 'm96' in art.qty:
                     wrt.writerow([art.ga_code])
     s.close()
 
