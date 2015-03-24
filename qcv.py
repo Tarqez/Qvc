@@ -436,6 +436,12 @@ def ebay_report_datasource(fcsv):
 def anagrafica_datasource(fcsv):
     'Yield a dict of values'
 
+    def ec(s):
+        'Raise ValueError if empty string'
+
+        if not s: raise ValueError('Bad captured line: empty value')
+        return s 
+
     anagrafica_line = dict()
 
     with open(fcsv, 'rb') as f:
@@ -443,13 +449,13 @@ def anagrafica_datasource(fcsv):
         dsource_rows.next()
         for row in dsource_rows:
             try:
-                anagrafica_line['ga_code']=row[0]
-                anagrafica_line['brand']=' '.join(row[4].split()[1:]).title()
-                anagrafica_line['mnf_code']=row[6]
-                anagrafica_line['descr']=row[2].decode('iso.8859-1')
-                anagrafica_line['categ']=' '.join(row[5].split()[1:])
-                anagrafica_line['sale_unit']=row[3].split().pop(0)
-                anagrafica_line['sale_min']=int(float((row[7].strip() or '0,0').replace('.', '').replace(',', '.')))
+                anagrafica_line['ga_code'] = ec(row[0])
+                anagrafica_line['brand'] = ' '.join(ec(row[4]).split()[1:]).title()
+                anagrafica_line['mnf_code'] = ec(row[6])
+                anagrafica_line['descr'] = ec(row[2]).decode('iso.8859-1')
+                anagrafica_line['categ'] = ' '.join(row[5].split()[1:])
+                anagrafica_line['sale_unit'] = ec(row[3]).split().pop(0)
+                anagrafica_line['sale_min'] = int(float((row[7].strip() or '0,0').replace('.', '').replace(',', '.')))
 
                 yield anagrafica_line
 
