@@ -754,6 +754,21 @@ def gacodes_for_anagrafica():
 
 gaf = gacodes_for_anagrafica
 
+def gacodes_for_price(brand):
+    'Create csv f gacodes for price capturing'
+
+    global s
+    s = Session()
+    arts = s.query(Anagrafica).filter(Anagrafica.brand == brand.title())
+    fout_name = os.path.join(DATA_PATH, fx_fname('gacodes'))
+    with open(fout_name, 'wb') as csvf:
+        wrt = csv.writer(csvf)
+        for art in arts:
+            wrt.writerow([art.ga_code]) 
+    s.close()
+
+gap = gacodes_for_price
+
            
 
 # Composed actions
