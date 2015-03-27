@@ -332,15 +332,36 @@ def set_extra_pq(ga_code, qty=0, prc=0):
     else: print 'no ga_code found in DB'
     s.close()
 
-def get_all_pq(ga_code):
-    'Get all prices and quantities for the given item'
 
+def get_info_on(ga_code):
+    'Get all local db info for ga_code given as string'
+
+    assert(isinstance(ga_code, basestring))
+
+    ga_code = unicode(ga_code).zfill(7)
     s = Session()
+
+    # Price, Quantity, itemid, date
     art = s.query(Art).filter(Art.ga_code == ga_code).first()
     if art:
-        print 'extra_qty: %s - qty: %s' % (str(art.extra_qty), str(art.qty))
-        print 'extra_prc: %s - prc: %s' % (str(art.extra_prc), str(art.prc))
-    else: print 'Art not exsists'
+        print 'Itemid:', art.itemid
+        print 'date:', str(art.timestamp)
+        print 'qty:', str(art.qty)
+        print 'extra_qty:', str(art.extra_qty)
+        print 'prc:', str(art.prc)
+        print 'extra_prc:', str(art.extra_prc)
+    else: print 'No Price nor Quantity'
+
+    # Anagrafica
+    art = s.query(Anagrafica).filter(Anagrafica.ga_code == ga_code).first()
+    if art:
+        print 'Brand:', art.brand
+        print 'Manufacturer code:', art.mnf_code
+        print 'Category:', art.categ
+        print 'Descriprion:', art.descr
+    else: print 'No anagrafica'
+    s.close()
+
 
 
 # Datasources
@@ -742,14 +763,21 @@ def gacodes_for_anagrafica():
 
     global s
     s = Session()
-    arts = s.query(Art).filter(Art.itemid != u'')
+    arts = s.query(Art).filter(Art.itemid == u'', Art.extra_qty >= 0, Art.prc != '')
     fout_name = os.path.join(DATA_PATH, fx_fname('gacodes'))
     with open(fout_name, 'wb') as csvf:
         wrt = csv.writer(csvf)
         for art in arts:
             if not s.query(Anagrafica).filter(Anagrafica.ga_code == art.ga_code).first(): # not exsist anagrafica
-                #if max(art.prc.values()) >= 40.0 and 'm96' in art.qty:
-                    wrt.writerow([art.ga_code])
+                try:
+                    if max(art.prc.values()) >= 50.0 and 'm91' not in art.qty:
+                        wrt.writerow([art.ga_code])
+                except:
+                    print 'rejected line:'
+                    print art.ga_code
+                    print sys.exc_info()[0]
+                    print sys.exc_info()[1]
+                    print sys.exc_info()[2]
     s.close()
 
 gaf = gacodes_for_anagrafica
