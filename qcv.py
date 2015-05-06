@@ -154,16 +154,14 @@ def ebay_prc(prcs, extra_p = 0):
         p = extra_p
     else:
         if prcs != None:
-            # 50€ line - the min price >= 50.0€
-            for pr in sorted(prcs.values()):
-                if pr >= 50.0: 
-                    p = pr
-                    break
-            # B line price (all prices >= 0)
-            #if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
-            #if prcs['b'] < 30: p = prcs['b']
-            #elif prcs['b'] < 50: p = prcs['b'] + 2.44
-            #else: p = prcs['b']            
+            # # 50€ line - the min price >= 50.0€
+            # for pr in sorted(prcs.values()):
+            #     if pr >= 50.0: 
+            #         p = pr
+            #         break
+            # # B line - the price is B
+            if prcs['b'] == 0: prcs['b'] = max(prcs['c'], prcs['d'], prcs['dr'])
+            p = prcs['b']            
     return p         
 
 
@@ -787,7 +785,8 @@ def gacodes_for_price(brand):
 
     global s
     s = Session()
-    arts = s.query(Anagrafica).filter(Anagrafica.brand == brand.title())
+    #arts = s.query(Anagrafica).filter(Anagrafica.brand == brand.title())
+    arts = s.query(Art).filter(Art.itemid != u'')
     fout_name = os.path.join(DATA_PATH, fx_fname('gacodes'))
     with open(fout_name, 'wb') as csvf:
         wrt = csv.writer(csvf)
